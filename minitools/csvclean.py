@@ -3,7 +3,7 @@
 Trims whitespace in every cell, normalises header names to snake_case,
 drops fully empty rows and (optionally) exact duplicate rows.
 
-    python -m minitools.csvclean input.csv output.csv [--dedupe]
+    python -m minitools.csvclean input.csv output.csv [--dedupe] [-d ';'] [--out-delimiter ',']
 """
 from __future__ import annotations
 
@@ -41,12 +41,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("input", type=Path)
     p.add_argument("output", type=Path)
     p.add_argument("--dedupe", action="store_true", help="drop exact duplicate rows")
+    p.add_argument(
+        "--delimiter", "-d", default=",",
+        help="field separator of the input, e.g. ';' for European exports (default ',')",
+    )
+    p.add_argument("--out-delimiter", help="field separator of the output (default: same as input)")
     args = p.parse_args(argv)
+    if len(args.delimiter) != 1 or (args.out_delimiter is not None and len(args.out_delimiter) != 1):
+        p.error("delimiters must be a single character")
     with args.input.open(newline="", encoding="utf-8-sig") as f:
-        rows = list(csv.reader(f))
+        rows = list(csv.reader(f, delimiter=args.delimiter))
     cleaned = clean_rows(rows, dedupe=args.dedupe)
     with args.output.open("w", newline="", encoding="utf-8") as f:
-        csv.writer(f).writerows(cleaned)
+        csv.writer(f, delimiter=args.out_delimiter or args.delimiter).writerows(cleaned)
     print(f"{len(rows) - 1} rows in, {len(cleaned) - 1} rows out -> {args.output}")
     return 0
 

@@ -33,3 +33,24 @@ def test_cli_bad_json_returns_error(tmp_path, capsys):
     src.write_text("{not json", encoding="utf-8")
     assert main([str(src), str(tmp_path / "out.csv")]) == 1
     assert "json2csv:" in capsys.readouterr().err
+
+
+def test_cli_reads_json_lines_by_suffix(tmp_path):
+    src, dst = tmp_path / "events.jsonl", tmp_path / "out.csv"
+    src.write_text('{"a": 1, "b": {"x": 2}}\n\n{"a": 3}\n', encoding="utf-8")
+    assert main([str(src), str(dst)]) == 0
+    assert dst.read_text(encoding="utf-8").splitlines() == ["a,b.x", "1,2", "3,"]
+
+
+def test_cli_lines_flag_for_other_suffix(tmp_path):
+    src, dst = tmp_path / "events.txt", tmp_path / "out.csv"
+    src.write_text('{"a": 1}\n{"a": 2}\n', encoding="utf-8")
+    assert main([str(src), str(dst), "--lines"]) == 0
+    assert dst.read_text(encoding="utf-8").splitlines() == ["a", "1", "2"]
+
+
+def test_cli_json_lines_error_names_line(tmp_path, capsys):
+    src = tmp_path / "bad.jsonl"
+    src.write_text('{"a": 1}\n{oops\n', encoding="utf-8")
+    assert main([str(src), str(tmp_path / "out.csv")]) == 1
+    assert "line 2" in capsys.readouterr().err

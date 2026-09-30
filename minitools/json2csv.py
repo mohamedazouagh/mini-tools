@@ -4,7 +4,11 @@ Columns are the union of all keys (in first-seen order). Nested objects are
 flattened with dots ({"a": {"b": 1}} -> column "a.b"); lists are written as
 JSON text. Missing keys become empty cells.
 
+JSON Lines input (one object per line) is read with --lines, or automatically
+when the input file ends in .jsonl / .ndjson. Blank lines are skipped.
+
     python -m minitools.json2csv input.json output.csv
+    python -m minitools.json2csv events.jsonl output.csv
 """
 from __future__ import annotations
 
@@ -40,13 +44,29 @@ def to_table(records: list) -> tuple[list[str], list[dict]]:
     return list(columns), rows
 
 
+def parse_json_lines(text: str) -> list:
+    """Parse JSON Lines; errors name the offending line number."""
+    records = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"line {lineno}: {exc.msg}") from exc
+    return records
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("input", type=Path)
     p.add_argument("output", type=Path)
+    p.add_argument("--lines", action="store_true", help="input is JSON Lines (auto for .jsonl/.ndjson)")
     args = p.parse_args(argv)
+    lines_mode = args.lines or args.input.suffix.lower() in (".jsonl", ".ndjson")
     try:
-        records = json.loads(args.input.read_text(encoding="utf-8-sig"))
+        text = args.input.read_text(encoding="utf-8-sig")
+        records = parse_json_lines(text) if lines_mode else json.loads(text)
         columns, rows = to_table(records)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"json2csv: {exc}", file=sys.stderr)

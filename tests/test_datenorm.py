@@ -60,3 +60,22 @@ def test_cli_strict_fails_without_writing(tmp_path):
     src.write_text("date\nnot a date\n", encoding="utf-8")
     assert main([str(src), str(dst), "-c", "date", "--strict"]) == 1
     assert not dst.exists()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2026-09-28T14:30:00",
+        "2026-09-28T14:30:00Z",
+        "2026-09-28 14:30",
+        "2026-09-28T23:59:59.123+02:00",
+        "2026-09-28T00:15:00-0500",
+    ],
+)
+def test_iso_timestamps_keep_their_date(text):
+    assert parse_date(text) == date(2026, 9, 28)
+
+
+@pytest.mark.parametrize("text", ["2026-09-28T25", "2026-09-28Tnoon", "2026-02-30T10:00", "2026-09-28 14:30 extra"])
+def test_malformed_timestamps_are_rejected(text):
+    assert parse_date(text) is None

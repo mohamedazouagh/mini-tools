@@ -2,7 +2,9 @@
 
 Understands ISO dates, day-first numeric dates (28-09-2026, 28/09/2026,
 28.09.2026), compact 20260928 and month names (28 Sep 2026, Sep 28, 2026,
-28 September 2026). Numeric dates are read day-first unless --monthfirst is
+28 September 2026). ISO timestamps (2026-09-28T14:30:00Z, 2026-09-28 14:30)
+keep their calendar date as written; the time and offset are dropped, no
+timezone conversion is done. Numeric dates are read day-first unless --monthfirst is
 given. Cells that cannot be parsed are left unchanged and reported; with
 --strict the tool exits with an error instead of writing output.
 
@@ -19,6 +21,8 @@ from pathlib import Path
 
 _NUMERIC = re.compile(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$")
 _ISO_LIKE = re.compile(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$")
+# "2026-09-28T14:30:00Z", "2026-09-28 14:30", "2026-09-28T14:30:00.123+02:00" -> keep the date part
+_ISO_DATETIME = re.compile(r"^(\d{4}-\d{1,2}-\d{1,2})[T ]\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$")
 _TEXT_FORMATS = ("%d %b %Y", "%d %B %Y", "%b %d, %Y", "%B %d, %Y", "%b %d %Y", "%B %d %Y")
 
 
@@ -27,6 +31,8 @@ def parse_date(text: str, monthfirst: bool = False) -> date | None:
     t = " ".join(text.strip().split())
     if not t:
         return None
+    if m := _ISO_DATETIME.match(t):
+        t = m.group(1)
     try:
         if m := _ISO_LIKE.match(t):
             y, mo, d = map(int, m.groups())

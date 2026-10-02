@@ -37,3 +37,22 @@ def test_cli_stdin_to_stdout(monkeypatch, capsys):
 def test_cli_missing_file(tmp_path, capsys):
     assert main([str(tmp_path / "nope.txt")]) == 1
     assert "no such file" in capsys.readouterr().err
+
+
+def test_keep_last_keeps_final_occurrence_at_its_position():
+    assert list(dedupe_lines(["b", "a", "b", "c", "a"], keep_last=True)) == ["b", "c", "a"]
+
+
+def test_keep_last_combines_with_other_options():
+    lines = ["Breda", "", "Tilburg", " BREDA ", ""]
+    assert list(dedupe_lines(lines, ignore_case=True, strip=True, skip_blank=True, keep_last=True)) == [
+        "Tilburg",
+        " BREDA ",
+    ]
+
+
+def test_cli_keep_last(tmp_path):
+    src, dst = tmp_path / "in.txt", tmp_path / "out.txt"
+    src.write_text("id1 old\nid2\nid1 old\n", encoding="utf-8")
+    assert main([str(src), "-o", str(dst), "--keep-last"]) == 0
+    assert dst.read_text(encoding="utf-8") == "id2\nid1 old\n"

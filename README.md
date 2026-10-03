@@ -9,6 +9,7 @@ Small, tested command-line utilities for everyday data chores. Standard library 
 | `datenorm` | Rewrite one CSV date column as ISO `YYYY-MM-DD`; ISO timestamps keep their date part (day-first by default, `--monthfirst` for US dates, `--strict` to fail on unparseable cells) | `python -m minitools.datenorm in.csv out.csv -c date` |
 | `dedupe` | Drop duplicate lines while keeping the original order; `-i` ignore case, `-s` ignore surrounding spaces, `--skip-blank`, `--keep-last` to keep the final occurrence, `--stats` | `python -m minitools.dedupe emails.txt -o unique.txt -i -s --stats` |
 | `wordfreq` | Line/word/char totals and the most frequent words across one or more files (case-insensitive, Unicode-aware); `--min-length`, `--stopwords FILE`, `--csv` | `python -m minitools.wordfreq notes.txt -n 10 --min-length 3` |
+| `renamer` | Bulk-rename files in one folder with a regex (`\1` groups); dry run by default, `--apply` to rename; refuses the whole batch on name clashes; `--glob`, `-i` | `python -m minitools.renamer photos "^IMG_(\d+)" "trip_\1" --apply` |
 
 ```bash
 python -m pytest

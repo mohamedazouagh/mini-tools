@@ -47,3 +47,23 @@ def test_cli_rejects_multi_char_delimiter(tmp_path):
     with pytest.raises(SystemExit) as exc:
         main([str(src), str(tmp_path / "out.csv"), "-d", ";;"])
     assert exc.value.code == 2
+
+
+def test_unique_headers_suffixes_clashes_and_names_blanks():
+    from minitools.csvclean import unique_headers
+
+    assert unique_headers(["First Name", "first_name", "FirstName", "", " # ", "x"]) == [
+        "first_name",
+        "first_name_2",
+        "first_name_3",
+        "column_4",
+        "column_5",
+        "x",
+    ]
+    # a generated suffix must not collide with a real header further on
+    assert unique_headers(["a", "a", "a_2"]) == ["a", "a_2", "a_2_2"]
+
+
+def test_clean_rows_header_clash_keeps_every_column():
+    rows = [["Price", "price ", ""], ["1", "2", "3"]]
+    assert clean_rows(rows) == [["price", "price_2", "column_3"], ["1", "2", "3"]]

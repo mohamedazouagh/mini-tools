@@ -19,10 +19,30 @@ def snake(name: str) -> str:
     return name.strip("_").lower()
 
 
+def unique_headers(names: list[str]) -> list[str]:
+    """snake_case every header and make the result unique.
+
+    Blank (or symbol-only) headers become ``column_<position>``; clashes such
+    as "First Name" and "first_name" get ``_2``, ``_3`` ... suffixes in order,
+    so no column silently overwrites another when the file is read as dicts.
+    """
+    out: list[str] = []
+    used: set[str] = set()
+    for i, raw in enumerate(names, start=1):
+        base = snake(raw) or f"column_{i}"
+        name, n = base, 1
+        while name in used:
+            n += 1
+            name = f"{base}_{n}"
+        used.add(name)
+        out.append(name)
+    return out
+
+
 def clean_rows(rows: list[list[str]], dedupe: bool = False) -> list[list[str]]:
     if not rows:
         return []
-    header = [snake(h) for h in rows[0]]
+    header = unique_headers(rows[0])
     out, seen = [header], set()
     for row in rows[1:]:
         cells = [c.strip() for c in row]

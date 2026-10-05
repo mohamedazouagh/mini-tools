@@ -1,5 +1,7 @@
 import io
 
+import pytest
+
 from minitools.wordfreq import analyse, main, words
 
 
@@ -38,3 +40,23 @@ def test_cli_csv_from_stdin(monkeypatch, capsys):
 def test_cli_missing_file(tmp_path, capsys):
     assert main([str(tmp_path / "nope.txt")]) == 1
     assert "no such file" in capsys.readouterr().err
+
+
+def test_cli_non_utf8_file_gives_clear_error_and_encoding_flag_reads_it(tmp_path, capsys):
+    src = tmp_path / "old.txt"
+    src.write_bytes("café café crème\n".encode("cp1252"))
+    assert main([str(src)]) == 1
+    err = capsys.readouterr().err
+    assert "is not valid utf-8" in err and "byte 0xe9" in err and "--encoding" in err
+    assert main([str(src), "--encoding", "cp1252", "-n", "1"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith("lines 1  words 3")
+    assert out[1].split() == ["café", "2"]
+
+
+def test_cli_unknown_encoding_is_rejected(tmp_path):
+    src = tmp_path / "a.txt"
+    src.write_text("hello", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main([str(src), "--encoding", "no-such-codec"])
+

@@ -12,6 +12,7 @@ Small, tested command-line utilities for everyday data chores. Standard library 
 | `renamer` | Bulk-rename files in one folder with a regex (`\1` groups); dry run by default, `--apply` to rename; refuses the whole batch on name clashes; `--glob`, `-i` | `python -m minitools.renamer photos "^IMG_(\d+)" "trip_\1" --apply` |
 | `csvstats` | Per-column profile of a CSV: filled/empty/distinct counts, plus min/max/mean for all-numeric columns; `-d`, `--decimal-comma`, `--csv` | `python -m minitools.csvstats data.csv -d ";" --decimal-comma` |
 | `csvsplit` | Split a CSV into files of N rows (`--rows`) or one file per column value (`--by`), header repeated in each; blank lines skipped, `-d`, `-o outdir`, refuses to overwrite unless `--force` | `python -m minitools.csvsplit sales.csv --by country -o parts` |
+| `csvjoin` | Join two CSVs on a key column (inner or `--how left`), one-to-many matches kept, keys trimmed, clashing right columns get `_right`; `--right-key`, `-d`, `-o` refuses to overwrite unless `--force` | `python -m minitools.csvjoin orders.csv customers.csv -k customer_id -o joined.csv` |
 
 ```bash
 python -m pytest

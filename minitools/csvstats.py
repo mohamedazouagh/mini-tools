@@ -2,7 +2,7 @@
 
 For every column: how many cells are filled or empty, how many distinct
 values there are, and - when every filled cell is a number - min, max and
-mean. Numbers may use a decimal comma ("3,5") when --decimal-comma is given.
+mean. NaN/inf spellings and underscores count as text. Numbers may use a decimal comma ("3,5") when --decimal-comma is given.
 Handy as a first look before cleaning or loading a file.
 
     python -m minitools.csvstats data.csv [-d ';'] [--decimal-comma] [--csv]
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -18,13 +19,21 @@ from statistics import mean
 
 
 def _number(cell: str, decimal_comma: bool) -> float | None:
+    """Parse a cell as a finite number, or return None.
+
+    float() also accepts "nan", "inf" and "1_000", which in a CSV are text
+    (a name like "Nan", a typo) rather than numbers, so those are rejected.
+    """
     text = cell.strip()
+    if "_" in text:
+        return None
     if decimal_comma:
         text = text.replace(".", "").replace(",", ".")
     try:
-        return float(text)
+        value = float(text)
     except ValueError:
         return None
+    return value if math.isfinite(value) else None
 
 
 def profile(rows: Iterable[dict[str, str]], columns: list[str], decimal_comma: bool = False) -> list[dict]:

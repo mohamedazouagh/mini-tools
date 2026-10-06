@@ -49,3 +49,13 @@ def test_cli_missing_file_and_empty_file(tmp_path, capsys):
     empty.write_text("", encoding="utf-8")
     assert main([str(empty)]) == 1
     assert "no header row" in capsys.readouterr().err
+
+
+def test_nan_inf_and_underscore_spellings_are_text_not_numbers():
+    rows = [{"name": "Nan", "n": "1_000"}, {"name": "Inf", "n": "2"}]
+    by_col = {s["column"]: s for s in profile(rows, ["name", "n"])}
+    assert by_col["name"]["mean"] is None and by_col["name"]["min"] is None
+    assert by_col["n"]["mean"] is None
+    ok = profile([{"x": "1e3"}, {"x": "-2.5"}], ["x"])[0]
+    assert (ok["min"], ok["max"]) == (-2.5, 1000.0)
+

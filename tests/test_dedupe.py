@@ -1,6 +1,6 @@
 import io
 
-from minitools.dedupe import dedupe_lines, main
+from minitools.dedupe import dedupe_lines, duplicate_lines, main
 
 
 def test_keeps_first_occurrence_in_order():
@@ -56,3 +56,32 @@ def test_cli_keep_last(tmp_path):
     src.write_text("id1 old\nid2\nid1 old\n", encoding="utf-8")
     assert main([str(src), "-o", str(dst), "--keep-last"]) == 0
     assert dst.read_text(encoding="utf-8") == "id2\nid1 old\n"
+
+
+def test_duplicate_lines_lists_each_repeat_once_in_first_seen_order():
+    lines = ["b", "a", "b", "c", "a", "b"]
+    assert duplicate_lines(lines) == [("b", 3), ("a", 2)]
+    assert duplicate_lines(["x", "y"]) == []
+
+
+def test_duplicate_lines_respects_comparison_options():
+    lines = ["Breda ", "breda", "", "", "Tilburg"]
+    assert duplicate_lines(lines) == [("", 2)]
+    assert duplicate_lines(lines, ignore_case=True, strip=True, skip_blank=True) == [("Breda ", 2)]
+
+
+def test_cli_only_dupes_with_stats(tmp_path, capsys):
+    src = tmp_path / "in.txt"
+    src.write_text("a@x.nl\nb@x.nl\nA@x.nl\nc@x.nl\nb@x.nl\nb@x.nl\n", encoding="utf-8")
+    assert main([str(src), "--only-dupes", "-i", "--stats"]) == 0
+    out = capsys.readouterr()
+    assert out.out == "a@x.nl\nb@x.nl\n"
+    assert "2 line(s) repeated" in out.err
+    assert "3x b@x.nl" in out.err and "2x a@x.nl" in out.err
+
+
+def test_cli_only_dupes_rejects_keep_last(tmp_path, capsys):
+    src = tmp_path / "in.txt"
+    src.write_text("a\na\n", encoding="utf-8")
+    assert main([str(src), "--only-dupes", "--keep-last"]) == 2
+    assert "cannot be combined" in capsys.readouterr().err

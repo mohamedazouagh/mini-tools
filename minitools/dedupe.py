@@ -3,17 +3,52 @@
 Order is preserved (unlike `sort -u`). Optionally compare lines ignoring case
 and/or surrounding whitespace, skip blank lines, and print a summary of how
 many duplicates were dropped. `--keep-last` keeps the last occurrence of
-each line instead of the first. Reads a file or stdin ("-"), writes stdout
+each line instead of the first. `--only-dupes` flips the tool into an audit
+mode: print only the lines that occur more than once (like `uniq -d`, but
+without sorting), with `--stats` reporting how often each repeats. Reads a file or stdin ("-"), writes stdout
 or --output.
 
-    python -m minitools.dedupe input.txt [-o out.txt] [--ignore-case] [--strip] [--skip-blank] [--keep-last] [--stats]
+    python -m minitools.dedupe input.txt [-o out.txt] [--ignore-case] [--strip] [--skip-blank] [--keep-last] [--only-dupes] [--stats]
 """
 from __future__ import annotations
 
 import argparse
 import sys
+from collections import Counter
 from collections.abc import Iterable, Iterator
 from pathlib import Path
+
+
+def _key_func(ignore_case: bool, strip: bool, skip_blank: bool):
+    def key_of(line: str) -> str | None:
+        key = line.strip() if strip else line
+        if skip_blank and not key.strip():
+            return None
+        return key.casefold() if ignore_case else key
+
+    return key_of
+
+
+def duplicate_lines(
+    lines: Iterable[str],
+    ignore_case: bool = False,
+    strip: bool = False,
+    skip_blank: bool = False,
+) -> list[tuple[str, int]]:
+    """Lines whose comparison key occurs more than once, as (first occurrence, count).
+
+    Returned in order of first appearance; each duplicated key is listed once.
+    """
+    key_of = _key_func(ignore_case, strip, skip_blank)
+    counts: Counter[str] = Counter()
+    first: dict[str, str] = {}
+    for line in lines:
+        key = key_of(line)
+        if key is None:
+            continue
+        counts[key] += 1
+        first.setdefault(key, line)
+    return [(first[k], n) for k, n in counts.items() if n > 1]
 
 
 def dedupe_lines(
@@ -31,11 +66,7 @@ def dedupe_lines(
     own position (useful when later lines are corrections of earlier ones).
     """
 
-    def key_of(line: str) -> str | None:
-        key = line.strip() if strip else line
-        if skip_blank and not key.strip():
-            return None
-        return key.casefold() if ignore_case else key
+    key_of = _key_func(ignore_case, strip, skip_blank)
 
     if keep_last:
         buffered = list(lines)
@@ -65,6 +96,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-s", "--strip", action="store_true", help="ignore leading/trailing whitespace when comparing")
     p.add_argument("--skip-blank", action="store_true", help="drop empty / whitespace-only lines")
     p.add_argument("--keep-last", action="store_true", help="keep the last occurrence of each line instead of the first")
+    p.add_argument(
+        "--only-dupes", action="store_true", help="print only lines that occur more than once (first occurrence each)"
+    )
     p.add_argument("--stats", action="store_true", help="print kept/dropped counts to stderr")
     args = p.parse_args(argv)
 
@@ -77,6 +111,21 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         raw = path.read_text(encoding="utf-8-sig")
     lines = raw.splitlines()
+    if args.only_dupes:
+        if args.keep_last:
+            print("dedupe: --only-dupes cannot be combined with --keep-last", file=sys.stderr)
+            return 2
+        dupes = duplicate_lines(lines, args.ignore_case, args.strip, args.skip_blank)
+        text = "".join(f"{line}\n" for line, _ in dupes)
+        if args.output:
+            args.output.write_text(text, encoding="utf-8")
+        else:
+            sys.stdout.write(text)
+        if args.stats:
+            print(f"dedupe: {len(dupes)} line(s) repeated", file=sys.stderr)
+            for line, n in dupes:
+                print(f"  {n}x {line}", file=sys.stderr)
+        return 0
     kept = list(dedupe_lines(lines, args.ignore_case, args.strip, args.skip_blank, args.keep_last))
     text = "".join(f"{line}\n" for line in kept)
 

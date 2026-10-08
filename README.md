@@ -14,6 +14,7 @@ Small, tested command-line utilities for everyday data chores. Standard library 
 | `csvsplit` | Split a CSV into files of N rows (`--rows`) or one file per column value (`--by`), header repeated in each; blank lines skipped, `-d`, `-o outdir`, refuses to overwrite unless `--force` | `python -m minitools.csvsplit sales.csv --by country -o parts` |
 | `csvjoin` | Join two CSVs on a key column (inner or `--how left`), one-to-many matches kept, keys trimmed, clashing right columns get `_right`; `--right-key`, `-d`, `-o` refuses to overwrite unless `--force` | `python -m minitools.csvjoin orders.csv customers.csv -k customer_id -o joined.csv` |
 | `csvcut` | Keep and reorder (`-c email,id`) or drop (`-x notes`) CSV columns by name; unknown names fail with the list of real headers, short rows padded, quoting preserved; `-d`, `-o`, stdin via `-` | `python -m minitools.csvcut contacts.csv -c email,name -o emails.csv` |
+| `csvsort` | Sort CSV rows by one or more columns (`-k country,amount`); all-numeric columns sort as numbers, text case-insensitively, empty cells last even with `-r`; stable, unknown names list the real headers; `-d`, `-o`, stdin via `-` | `python -m minitools.csvsort sales.csv -k country,amount -r -o sorted.csv` |
 
 ```bash
 python -m pytest

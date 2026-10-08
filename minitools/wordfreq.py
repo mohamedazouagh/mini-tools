@@ -7,7 +7,9 @@ ignores words listed one per line. Reads files or stdin ("-"). Files are
 read as UTF-8 by default; `--encoding cp1252` (or latin-1, ...) handles
 older exports, and an undecodable file gives a clear error, not a traceback.
 
-    python -m minitools.wordfreq notes.txt [more.txt ...] [-n 10] [--min-length 3] [--stopwords stop.txt] [--encoding cp1252] [--csv]
+`--min-count N` hides words seen fewer than N times (totals are unchanged).
+
+    python -m minitools.wordfreq notes.txt [more.txt ...] [-n 10] [--min-length 3] [--min-count 2] [--stopwords stop.txt] [--encoding cp1252] [--csv]
 """
 from __future__ import annotations
 
@@ -67,12 +69,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("inputs", nargs="+", help='text files, or "-" for stdin')
     p.add_argument("-n", "--top", type=int, default=10, help="how many words to list (default 10, 0 = none)")
     p.add_argument("--min-length", type=int, default=1, help="ignore words shorter than this")
+    p.add_argument("--min-count", type=int, default=1, help="only list words seen at least this many times")
     p.add_argument("--stopwords", type=Path, help="file with words to ignore, one per line")
     p.add_argument("--csv", action="store_true", help="print the word table as CSV (word,count)")
     p.add_argument("--encoding", default="utf-8-sig", help="text encoding of the input files (default UTF-8)")
     args = p.parse_args(argv)
-    if args.top < 0 or args.min_length < 1:
-        p.error("--top must be >= 0 and --min-length >= 1")
+    if args.top < 0 or args.min_length < 1 or args.min_count < 1:
+        p.error("--top must be >= 0, --min-length and --min-count >= 1")
     try:
         "".encode(args.encoding)
     except LookupError:
@@ -107,6 +110,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # most_common keeps first-seen order for ties, so output is deterministic
     top = total.counts.most_common(args.top) if args.top else []
+    # most_common is sorted by count, so the cut-off is a prefix
+    top = [(w, c) for w, c in top if c >= args.min_count]
     if args.csv:
         writer = csv.writer(sys.stdout, lineterminator="\n")
         writer.writerow(["word", "count"])

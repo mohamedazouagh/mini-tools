@@ -60,3 +60,21 @@ def test_cli_unknown_encoding_is_rejected(tmp_path):
     with pytest.raises(SystemExit):
         main([str(src), "--encoding", "no-such-codec"])
 
+
+
+def test_cli_min_count_hides_rare_words_but_keeps_totals(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO("a b b c c c"))
+    assert main(["-", "--min-count", "2"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "lines 1  words 6  chars 11  unique 3"
+    assert out[1:] == ["c  3", "b  2"]
+    monkeypatch.setattr("sys.stdin", io.StringIO("a b"))
+    assert main(["-", "--csv", "--min-count", "5"]) == 0
+    assert capsys.readouterr().out == "word,count\n"
+
+
+def test_cli_min_count_must_be_positive(tmp_path):
+    src = tmp_path / "a.txt"
+    src.write_text("hello", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main([str(src), "--min-count", "0"])

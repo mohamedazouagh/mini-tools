@@ -15,6 +15,7 @@ Small, tested command-line utilities for everyday data chores. Standard library 
 | `csvjoin` | Join two CSVs on a key column (inner or `--how left`), one-to-many matches kept, keys trimmed, clashing right columns get `_right`; `--right-key`, `-d`, `-o` refuses to overwrite unless `--force` | `python -m minitools.csvjoin orders.csv customers.csv -k customer_id -o joined.csv` |
 | `csvcut` | Keep and reorder (`-c email,id`) or drop (`-x notes`) CSV columns by name; unknown names fail with the list of real headers, short rows padded, quoting preserved; `-d`, `-o`, stdin via `-` | `python -m minitools.csvcut contacts.csv -c email,name -o emails.csv` |
 | `csvsort` | Sort CSV rows by one or more columns (`-k country,amount`); all-numeric columns sort as numbers, text case-insensitively, empty cells last even with `-r`; stable, unknown names list the real headers; `-d`, `-o`, stdin via `-` | `python -m minitools.csvsort sales.csv -k country,amount -r -o sorted.csv` |
+| `csvfilter` | Keep rows matching conditions like `amount>=100`, `country=NL`, `email~regex` (`=` `!=` `>` `>=` `<` `<=` `~` `!~`); repeat `-w` for AND or add `--any` for OR; numbers compare as numbers, text cells never match `>`/`<`; `-i`, `--count`, `-d`, `-o`, stdin via `-` | `python -m minitools.csvfilter sales.csv -w "country=NL" -w "amount>=100" -o nl_big.csv` |
 
 ```bash
 python -m pytest

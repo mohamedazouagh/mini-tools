@@ -2,7 +2,8 @@
 
 Columns are the union of all keys (in first-seen order). Nested objects are
 flattened with dots ({"a": {"b": 1}} -> column "a.b"); lists are written as
-JSON text. Missing keys become empty cells.
+JSON text and booleans keep their JSON spelling (true/false). Missing keys and
+null become empty cells.
 
 JSON Lines input (one object per line) is read with --lines, or automatically
 when the input file ends in .jsonl / .ndjson. Blank lines are skipped.
@@ -33,6 +34,8 @@ def flatten(obj: dict, prefix: str = "") -> dict:
             flat[name] = json.dumps(value, ensure_ascii=False)
         elif value is None:
             flat[name] = ""
+        elif isinstance(value, bool):
+            flat[name] = "true" if value else "false"  # JSON spelling, not Python's True/False
         else:
             flat[name] = value
     return flat

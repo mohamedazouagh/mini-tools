@@ -86,3 +86,18 @@ def test_cli_path_rejected_for_json_lines(tmp_path, capsys):
     src.write_text('{"a": 1}\n', encoding="utf-8")
     assert main([str(src), str(tmp_path / "out.csv"), "--path", "a"]) == 1
     assert "cannot be combined" in capsys.readouterr().err
+
+
+def test_booleans_keep_json_spelling():
+    assert flatten({"active": True, "meta": {"admin": False}, "n": 0}) == {
+        "active": "true",
+        "meta.admin": "false",
+        "n": 0,
+    }
+
+
+def test_cli_writes_lowercase_booleans(tmp_path):
+    src, dst = tmp_path / "in.json", tmp_path / "out.csv"
+    src.write_text(json.dumps([{"id": 1, "ok": True}, {"id": 2, "ok": False}]), encoding="utf-8")
+    assert main([str(src), str(dst)]) == 0
+    assert dst.read_text(encoding="utf-8").splitlines() == ["id,ok", "1,true", "2,false"]

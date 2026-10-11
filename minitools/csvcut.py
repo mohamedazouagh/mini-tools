@@ -7,6 +7,7 @@ producing an empty column. Reads a file or stdin ("-"), writes stdout or -o.
 
     python -m minitools.csvcut in.csv -c email,name [-o out.csv] [-d ';']
     python -m minitools.csvcut in.csv -x notes,internal_id
+    python -m minitools.csvcut in.csv -c email,id -r email=Email -r id=customer_id
 """
 from __future__ import annotations
 
@@ -45,6 +46,28 @@ def plan_columns(header: list[str], keep: list[str] | None = None, drop: list[st
     return idx
 
 
+def rename_header(header: list[str], specs: list[str]) -> list[str]:
+    """Apply ``old=new`` renames to an output header.
+
+    Raises ColumnError for a malformed spec, a name that is not in the header,
+    or a rename that would leave two columns with the same name.
+    """
+    mapping: dict[str, str] = {}
+    for spec in specs:
+        old, sep, new = spec.partition("=")
+        old, new = old.strip(), new.strip()
+        if not sep or not old or not new:
+            raise ColumnError(f"bad --rename {spec!r}; use old=new")
+        if old not in header:
+            raise ColumnError(f"cannot rename {old!r}: not in output columns ({', '.join(header)})")
+        mapping[old] = new
+    out = [mapping.get(h, h) for h in header]
+    dupes = sorted({h for h in out if out.count(h) > 1})
+    if dupes:
+        raise ColumnError(f"rename would duplicate column name(s): {', '.join(dupes)}")
+    return out
+
+
 def cut_rows(rows: list[list[str]], idx: list[int]) -> list[list[str]]:
     """Pick columns from each row; short rows are padded with empty cells."""
     return [[row[i] if i < len(row) else "" for i in idx] for row in rows]
@@ -58,6 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("-x", "--exclude", help="comma-separated columns to drop")
     p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default ',')")
     p.add_argument("-o", "--output", type=Path, help="write here instead of stdout")
+    p.add_argument(
+        "-r", "--rename", action="append", default=[], metavar="OLD=NEW", help="rename an output column (repeatable)"
+    )
     args = p.parse_args(argv)
 
     if args.input == "-":
@@ -80,13 +106,14 @@ def main(argv: list[str] | None = None) -> int:
             keep=_names(args.columns) if args.columns else None,
             drop=_names(args.exclude) if args.exclude else None,
         )
+        out_header = rename_header([header[i] for i in idx], args.rename)
     except ColumnError as e:
         print(f"csvcut: {e}", file=sys.stderr)
         return 2
 
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=args.delimiter, lineterminator="\n")
-    writer.writerow([header[i] for i in idx])
+    writer.writerow(out_header)
     writer.writerows(cut_rows(rows[1:], idx))
     if args.output:
         args.output.write_text(buf.getvalue(), encoding="utf-8")

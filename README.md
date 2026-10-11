@@ -16,6 +16,7 @@ Small, tested command-line utilities for everyday data chores. Standard library 
 | `csvcut` | Keep and reorder (`-c email,id`) or drop (`-x notes`) CSV columns by name; unknown names fail with the list of real headers, short rows padded, quoting preserved; `-d`, `-o`, stdin via `-` | `python -m minitools.csvcut contacts.csv -c email,name -o emails.csv` |
 | `csvsort` | Sort CSV rows by one or more columns (`-k country,amount`); all-numeric columns sort as numbers, text case-insensitively, empty cells last even with `-r`; stable, unknown names list the real headers; `-d`, `-o`, stdin via `-` | `python -m minitools.csvsort sales.csv -k country,amount -r -o sorted.csv` |
 | `csvfilter` | Keep rows matching conditions like `amount>=100`, `country=NL`, `email~regex` (`=` `!=` `>` `>=` `<` `<=` `~` `!~`); repeat `-w` for AND or add `--any` for OR; numbers compare as numbers, text cells never match `>`/`<`; `-i`, `--count`, `-d`, `-o`, stdin via `-` | `python -m minitools.csvfilter sales.csv -w "country=NL" -w "amount>=100" -o nl_big.csv` |
+| `csvdiff` | Compare two versions of a CSV by a key column: added (`+`), removed (`-`) and changed (`~`) rows with the cells that changed; row order ignored, cells trimmed, columns in only one file reported; duplicate keys rejected; `--summary`, `-d`; exit 0 identical / 1 different / 2 bad input | `python -m minitools.csvdiff old.csv new.csv -k id` |
 
 ```bash
 python -m pytest

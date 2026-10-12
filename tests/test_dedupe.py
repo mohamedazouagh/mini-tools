@@ -1,5 +1,7 @@
 import io
 
+import pytest
+
 from minitools.dedupe import dedupe_lines, duplicate_lines, main
 
 
@@ -85,3 +87,32 @@ def test_cli_only_dupes_rejects_keep_last(tmp_path, capsys):
     src.write_text("a\na\n", encoding="utf-8")
     assert main([str(src), "--only-dupes", "--keep-last"]) == 2
     assert "cannot be combined" in capsys.readouterr().err
+
+
+def test_cli_non_utf8_input_gives_clear_error(tmp_path, capsys):
+    from minitools.dedupe import main as dedupe_main
+
+    src = tmp_path / "legacy.txt"
+    src.write_bytes("café\ncafé\n".encode("cp1252"))
+    assert dedupe_main([str(src)]) == 1
+    err = capsys.readouterr().err
+    assert "is not valid utf-8" in err and "byte 0xe9" in err and "--encoding cp1252" in err
+
+
+def test_cli_encoding_reads_and_writes_same_encoding(tmp_path):
+    from minitools.dedupe import main as dedupe_main
+
+    src, dst = tmp_path / "legacy.txt", tmp_path / "out.txt"
+    src.write_bytes("café\nCAFÉ\nthé\n".encode("cp1252"))
+    assert dedupe_main([str(src), "-i", "--encoding", "cp1252", "-o", str(dst)]) == 0
+    assert dst.read_text(encoding="cp1252") == "café\nthé\n"
+
+
+def test_cli_unknown_encoding_is_usage_error(tmp_path):
+    from minitools.dedupe import main as dedupe_main
+
+    src = tmp_path / "in.txt"
+    src.write_text("a\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        dedupe_main([str(src), "--encoding", "no-such-codec"])
+    assert exc.value.code == 2

@@ -6,9 +6,11 @@ many duplicates were dropped. `--keep-last` keeps the last occurrence of
 each line instead of the first. `--only-dupes` flips the tool into an audit
 mode: print only the lines that occur more than once (like `uniq -d`, but
 without sorting), with `--stats` reporting how often each repeats. Reads a file or stdin ("-"), writes stdout
-or --output.
+or --output. Files are read as UTF-8 by default; `--encoding cp1252` (or latin-1, ...)
+reads legacy exports and writes -o in the same encoding, and undecodable input gives a
+clear error instead of a traceback.
 
-    python -m minitools.dedupe input.txt [-o out.txt] [--ignore-case] [--strip] [--skip-blank] [--keep-last] [--only-dupes] [--stats]
+    python -m minitools.dedupe input.txt [-o out.txt] [--ignore-case] [--strip] [--skip-blank] [--keep-last] [--only-dupes] [--stats] [--encoding cp1252]
 """
 from __future__ import annotations
 
@@ -100,7 +102,15 @@ def main(argv: list[str] | None = None) -> int:
         "--only-dupes", action="store_true", help="print only lines that occur more than once (first occurrence each)"
     )
     p.add_argument("--stats", action="store_true", help="print kept/dropped counts to stderr")
+    p.add_argument(
+        "--encoding", default="utf-8-sig", help="encoding of the input file, also used for -o (default UTF-8)"
+    )
     args = p.parse_args(argv)
+    try:
+        "".encode(args.encoding)
+    except LookupError:
+        p.error(f"unknown encoding: {args.encoding}")
+    out_encoding = "utf-8" if args.encoding.lower().replace("_", "-") == "utf-8-sig" else args.encoding
 
     if args.input == "-":
         raw = sys.stdin.read()
@@ -109,7 +119,15 @@ def main(argv: list[str] | None = None) -> int:
         if not path.is_file():
             print(f"dedupe: no such file: {path}", file=sys.stderr)
             return 1
-        raw = path.read_text(encoding="utf-8-sig")
+        try:
+            raw = path.read_text(encoding=args.encoding)
+        except UnicodeDecodeError as exc:
+            print(
+                f"dedupe: {path} is not valid {exc.encoding} (byte 0x{exc.object[exc.start]:02x} at offset "
+                f"{exc.start}); try --encoding cp1252 or --encoding latin-1",
+                file=sys.stderr,
+            )
+            return 1
     lines = raw.splitlines()
     if args.only_dupes:
         if args.keep_last:
@@ -118,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         dupes = duplicate_lines(lines, args.ignore_case, args.strip, args.skip_blank)
         text = "".join(f"{line}\n" for line, _ in dupes)
         if args.output:
-            args.output.write_text(text, encoding="utf-8")
+            args.output.write_text(text, encoding=out_encoding)
         else:
             sys.stdout.write(text)
         if args.stats:
@@ -130,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     text = "".join(f"{line}\n" for line in kept)
 
     if args.output:
-        args.output.write_text(text, encoding="utf-8")
+        args.output.write_text(text, encoding=out_encoding)
     else:
         sys.stdout.write(text)
     if args.stats:

@@ -18,6 +18,7 @@ Small, tested command-line utilities for everyday data chores. Standard library 
 | `csvsort` | Sort CSV rows by one or more columns (`-k country,amount`); all-numeric columns sort as numbers, text case-insensitively, empty cells last even with `-r`; stable, unknown names list the real headers; `-d`, `-o`, stdin via `-` | `python -m minitools.csvsort sales.csv -k country,amount -r -o sorted.csv` |
 | `csvfilter` | Keep rows matching conditions like `amount>=100`, `country=NL`, `email~regex` (`=` `!=` `>` `>=` `<` `<=` `~` `!~`); repeat `-w` for AND or add `--any` for OR; numbers compare as numbers, text cells never match `>`/`<`; `-i`, `--count`, `-d`, `-o`, stdin via `-` | `python -m minitools.csvfilter sales.csv -w "country=NL" -w "amount>=100" -o nl_big.csv` |
 | `csvdiff` | Compare two versions of a CSV by a key column: added (`+`), removed (`-`) and changed (`~`) rows with the cells that changed; row order ignored, cells trimmed, columns in only one file reported; duplicate keys rejected; `--summary`, `-d`; exit 0 identical / 1 different / 2 bad input | `python -m minitools.csvdiff old.csv new.csv -k id` |
+| `csvstack` | Append several CSVs into one with a single header; columns may be in any order (matched by name), `--union` allows different columns and leaves missing cells empty, `--source NAME` adds a column with each row's file name; over-long rows and duplicate headers rejected, refuses to write over an input; `-d`, `-o` | `python -m minitools.csvstack jan.csv feb.csv mar.csv --source file -o q1.csv` |
 
 ```bash
 python -m pytest

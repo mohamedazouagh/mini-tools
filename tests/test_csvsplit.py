@@ -74,3 +74,19 @@ def test_cli_errors(tmp_path, capsys):
     assert "no header row" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         main([str(src), "--rows", "0"])
+
+
+def test_group_rows_merges_values_that_differ_only_in_case():
+    rows = [["1", "NL"], ["2", "nl"], ["3", "BE"], ["4", "Nl "]]
+    groups = group_rows(rows, 1)
+    assert list(groups) == ["NL", "BE"]
+    assert [r[0] for r in groups["NL"]] == ["1", "2", "4"]
+
+
+def test_cli_by_column_does_not_lose_rows_to_case_clashes(tmp_path, capsys):
+    src = _csv(tmp_path, "id,country\n1,NL\n2,nl\n3,BE\n")
+    out = tmp_path / "parts"
+    assert main([str(src), "--by", "country", "-o", str(out)]) == 0
+    assert sorted(p.name for p in out.iterdir()) == ["sales_BE.csv", "sales_NL.csv"]
+    assert (out / "sales_NL.csv").read_text(encoding="utf-8") == "id,country\n1,NL\n2,nl\n"
+    assert "3 rows -> 2 files" in capsys.readouterr().out

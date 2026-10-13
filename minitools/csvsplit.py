@@ -43,11 +43,16 @@ def group_rows(rows: Iterable[list[str]], index: int) -> dict[str, list[list[str
     """Group rows by the safe name of column ``index``, keeping first-seen order.
 
     Different raw values that map to the same safe name (e.g. "a/b" and
-    "a b") share one group. Short rows count as an empty value.
+    "a b") share one group. Names that differ only in case ("NL", "nl")
+    also share one group, named after the first spelling seen: on Windows
+    and macOS they would be the same file, and the second write would
+    silently replace the first. Short rows count as an empty value.
     """
     groups: dict[str, list[list[str]]] = {}
+    spelling: dict[str, str] = {}
     for row in rows:
-        key = safe_name(row[index] if index < len(row) else "")
+        name = safe_name(row[index] if index < len(row) else "")
+        key = spelling.setdefault(name.casefold(), name)
         groups.setdefault(key, []).append(row)
     return groups
 

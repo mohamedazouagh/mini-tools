@@ -79,3 +79,37 @@ def test_iso_timestamps_keep_their_date(text):
 @pytest.mark.parametrize("text", ["2026-09-28T25", "2026-09-28Tnoon", "2026-02-30T10:00", "2026-09-28 14:30 extra"])
 def test_malformed_timestamps_are_rejected(text):
     assert parse_date(text) is None
+
+
+def test_cli_semicolon_delimiter_round_trips(tmp_path):
+    src, dst = tmp_path / "in.csv", tmp_path / "out.csv"
+    src.write_text("id;datum;bedrag\n1;28-09-2026;12,50\n2;1 Oct 2026;3,00\n", encoding="utf-8")
+    assert main([str(src), str(dst), "-c", "datum", "-d", ";"]) == 0
+    assert dst.read_text(encoding="utf-8").splitlines() == [
+        "id;datum;bedrag",
+        "1;2026-09-28;12,50",
+        "2;2026-10-01;3,00",
+    ]
+
+
+def test_cli_tab_delimiter_spelled_as_backslash_t(tmp_path):
+    src, dst = tmp_path / "in.tsv", tmp_path / "out.tsv"
+    src.write_text("date\tnote\n28/09/2026\tok\n", encoding="utf-8")
+    assert main([str(src), str(dst), "-c", "date", "-d", "\\t"]) == 0
+    assert dst.read_text(encoding="utf-8").splitlines() == ["date\tnote", "2026-09-28\tok"]
+
+
+def test_cli_wrong_delimiter_reports_missing_column(tmp_path, capsys):
+    src, dst = tmp_path / "in.csv", tmp_path / "out.csv"
+    src.write_text("id;date\n1;28-09-2026\n", encoding="utf-8")
+    assert main([str(src), str(dst), "-c", "date"]) == 1
+    assert "not found" in capsys.readouterr().err
+    assert not dst.exists()
+
+
+def test_cli_rejects_multi_character_delimiter(tmp_path, capsys):
+    src, dst = tmp_path / "in.csv", tmp_path / "out.csv"
+    src.write_text("date\n28-09-2026\n", encoding="utf-8")
+    assert main([str(src), str(dst), "-c", "date", "-d", ";;"]) == 1
+    assert "one character" in capsys.readouterr().err
+    assert not dst.exists()

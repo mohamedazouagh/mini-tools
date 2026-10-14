@@ -6,9 +6,11 @@ Understands ISO dates, day-first numeric dates (28-09-2026, 28/09/2026,
 keep their calendar date as written; the time and offset are dropped, no
 timezone conversion is done. Numeric dates are read day-first unless --monthfirst is
 given. Cells that cannot be parsed are left unchanged and reported; with
---strict the tool exits with an error instead of writing output.
+--strict the tool exits with an error instead of writing output. Use -d for
+semicolon- or tab-separated files; the output keeps the same delimiter.
 
     python -m minitools.datenorm input.csv output.csv --column date [--monthfirst] [--strict]
+    python -m minitools.datenorm export.csv clean.csv -c datum -d ";"
 """
 from __future__ import annotations
 
@@ -73,9 +75,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--column", "-c", required=True, help="name of the date column")
     p.add_argument("--monthfirst", action="store_true", help="read 09/28/2026 style dates (US order)")
     p.add_argument("--strict", action="store_true", help="fail if any non-empty cell cannot be parsed")
+    p.add_argument("-d", "--delimiter", default=",", help="field delimiter for input and output (default ','; use '\\t' for tabs)")
     args = p.parse_args(argv)
+    delimiter = "\t" if args.delimiter in ("\\t", "tab") else args.delimiter
+    if len(delimiter) != 1:
+        print(f"datenorm: delimiter must be one character, got {args.delimiter!r}", file=sys.stderr)
+        return 1
     with args.input.open(newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(f, delimiter=delimiter)
         fields = reader.fieldnames or []
         rows = list(reader)
     if args.column not in fields:
@@ -86,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"datenorm: could not parse rows {failed[:10]}", file=sys.stderr)
         return 1
     with args.output.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fields)
+        writer = csv.DictWriter(f, fieldnames=fields, delimiter=delimiter)
         writer.writeheader()
         writer.writerows(rows)
     note = f", {len(failed)} left unchanged (rows {failed[:10]})" if failed else ""

@@ -75,3 +75,47 @@ def test_cli_does_not_modify_files(tmp_path):
     _tree(tmp_path, {"a": b"dup", "b": b"dup"})
     main([str(tmp_path)])
     assert sorted(p.name for p in tmp_path.iterdir()) == ["a", "b"]
+
+
+def test_unreadable_file_is_skipped_not_fatal(tmp_path, monkeypatch):
+    import minitools.dupfiles as dupfiles
+
+    _tree(tmp_path, {"a.txt": b"same", "b.txt": b"same", "locked.txt": b"same"})
+    real_hash = dupfiles.file_hash
+
+    def flaky_hash(path):
+        if path.name == "locked.txt":
+            raise PermissionError(13, "Permission denied")
+        return real_hash(path)
+
+    monkeypatch.setattr(dupfiles, "file_hash", flaky_hash)
+    skipped = []
+    groups = find_duplicates(sorted(tmp_path.iterdir()), skipped=skipped)
+    assert groups == [(4, [tmp_path / "a.txt", tmp_path / "b.txt"])]
+    assert skipped == [(tmp_path / "locked.txt", "Permission denied")]
+
+
+def test_file_vanishing_before_stat_is_skipped(tmp_path):
+    _tree(tmp_path, {"a.txt": b"x"})
+    skipped = []
+    assert find_duplicates([tmp_path / "gone.txt", tmp_path / "a.txt"], skipped=skipped) == []
+    assert [p.name for p, _ in skipped] == ["gone.txt"]
+
+
+def test_cli_reports_skipped_files_on_stderr(tmp_path, monkeypatch, capsys):
+    import minitools.dupfiles as dupfiles
+
+    _tree(tmp_path, {"a.txt": b"same", "sub/b.txt": b"same", "sub/locked.txt": b"same"})
+    real_hash = dupfiles.file_hash
+
+    def flaky_hash(path):
+        if path.name == "locked.txt":
+            raise PermissionError(13, "Permission denied")
+        return real_hash(path)
+
+    monkeypatch.setattr(dupfiles, "file_hash", flaky_hash)
+    assert main([str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert "  a.txt\n  sub/b.txt\n" in captured.out
+    assert "dupfiles: skipped sub/locked.txt: Permission denied" in captured.err
+    assert "1 unreadable file(s) skipped" in captured.err

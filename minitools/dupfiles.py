@@ -46,12 +46,25 @@ def file_hash(path: Path) -> str:
 
 
 def find_duplicates(
-    files: list[Path], min_size: int = 0, include_empty: bool = False
+    files: list[Path],
+    min_size: int = 0,
+    include_empty: bool = False,
+    skipped: list[tuple[Path, str]] | None = None,
 ) -> list[tuple[int, list[Path]]]:
-    """Groups of identical files as (size, sorted paths), largest size first."""
+    """Groups of identical files as (size, sorted paths), largest size first.
+
+    Files that cannot be read (locked, no permission, deleted mid-scan) are
+    left out instead of aborting the whole scan; when ``skipped`` is given,
+    each one is appended to it as (path, reason).
+    """
     by_size: dict[int, list[Path]] = defaultdict(list)
     for f in files:
-        size = f.stat().st_size
+        try:
+            size = f.stat().st_size
+        except OSError as e:
+            if skipped is not None:
+                skipped.append((f, e.strerror or type(e).__name__))
+            continue
         if size < min_size or (size == 0 and not include_empty):
             continue
         by_size[size].append(f)
@@ -61,7 +74,13 @@ def find_duplicates(
             continue
         by_hash: dict[str, list[Path]] = defaultdict(list)
         for f in candidates:
-            by_hash[file_hash(f)].append(f)
+            try:
+                digest = file_hash(f)
+            except OSError as e:
+                if skipped is not None:
+                    skipped.append((f, e.strerror or type(e).__name__))
+                continue
+            by_hash[digest].append(f)
         groups += [(size, sorted(paths)) for paths in by_hash.values() if len(paths) > 1]
     return sorted(groups, key=lambda g: (-g[0], g[1]))
 
@@ -89,7 +108,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     walker = args.folder.glob if args.no_recursive else args.folder.rglob
     files = [f for f in walker(args.glob) if f.is_file() and not f.is_symlink()]
-    groups = find_duplicates(files, args.min_size, args.include_empty)
+    skipped: list[tuple[Path, str]] = []
+    groups = find_duplicates(files, args.min_size, args.include_empty, skipped)
+    for path, reason in skipped:
+        print(f"dupfiles: skipped {path.relative_to(args.folder).as_posix()}: {reason}", file=sys.stderr)
 
     if args.csv:
         w = csv.writer(sys.stdout, lineterminator="\n")
@@ -104,7 +126,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {path.relative_to(args.folder).as_posix()}")
     wasted = sum(size * (len(paths) - 1) for size, paths in groups)
     print(
-        f"dupfiles: {len(files)} file(s) scanned, {len(groups)} duplicate group(s), {human(wasted)} reclaimable",
+        f"dupfiles: {len(files)} file(s) scanned, {len(groups)} duplicate group(s), {human(wasted)} reclaimable"
+        + (f", {len(skipped)} unreadable file(s) skipped" if skipped else ""),
         file=sys.stderr,
     )
     return 1 if groups else 0

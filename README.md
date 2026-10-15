@@ -20,6 +20,7 @@ Small, tested command-line utilities for everyday data chores. Standard library 
 | `csvdiff` | Compare two versions of a CSV by a key column: added (`+`), removed (`-`) and changed (`~`) rows with the cells that changed; row order ignored, cells trimmed, columns in only one file reported; duplicate keys rejected; `--summary`, `-d`; exit 0 identical / 1 different / 2 bad input | `python -m minitools.csvdiff old.csv new.csv -k id` |
 | `csvstack` | Append several CSVs into one with a single header; columns may be in any order (matched by name), `--union` allows different columns and leaves missing cells empty, `--source NAME` adds a column with each row's file name; over-long rows and duplicate headers rejected, refuses to write over an input; `-d`, `-o` | `python -m minitools.csvstack jan.csv feb.csv mar.csv --source file -o q1.csv` |
 | `dupfiles` | Find files with identical content in a folder tree (size first, then SHA-256 in chunks); read-only, never deletes; reports groups and reclaimable space; `--min-size 1M`, `--glob`, `--no-recursive`, `--include-empty`, `--csv`; exit 0 none / 1 duplicates / 2 bad input | `python -m minitools.dupfiles downloads --min-size 1M --glob "*.pdf"` |
+| `csvlook` | Preview a CSV as an aligned text table (numeric columns right-aligned) or `--markdown` table with pipes escaped; `-n` rows (default 20, 0 = all, "showing N of M" on stderr), `--max-width` cuts long cells with `…`, wide CJK characters kept aligned; `-d`, stdin via `-` | `python -m minitools.csvlook sales.csv -n 10 --markdown` |
 
 ```bash
 python -m pytest

@@ -8,6 +8,11 @@ producing an empty column. Reads a file or stdin ("-"), writes stdout or -o.
     python -m minitools.csvcut in.csv -c email,name [-o out.csv] [-d ';']
     python -m minitools.csvcut in.csv -x notes,internal_id
     python -m minitools.csvcut in.csv -c email,id -r email=Email -r id=customer_id
+    python -m minitools.csvcut legacy.csv -c name,city --encoding cp1252 -o utf8.csv
+
+Input is read as UTF-8 (a BOM is fine) unless --encoding says otherwise, so a
+legacy Excel export can be cut and converted to UTF-8 in one step; undecodable
+input gives a short error with the byte offset instead of a traceback.
 """
 from __future__ import annotations
 
@@ -84,7 +89,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "-r", "--rename", action="append", default=[], metavar="OLD=NEW", help="rename an output column (repeatable)"
     )
+    p.add_argument(
+        "--encoding", default="utf-8-sig", help="encoding of the input file, e.g. cp1252 (default UTF-8); output is UTF-8"
+    )
     args = p.parse_args(argv)
+    try:
+        "".encode(args.encoding)
+    except LookupError:
+        p.error(f"unknown encoding: {args.encoding}")
 
     if args.input == "-":
         raw = sys.stdin.read()
@@ -93,7 +105,15 @@ def main(argv: list[str] | None = None) -> int:
         if not path.is_file():
             print(f"csvcut: no such file: {path}", file=sys.stderr)
             return 1
-        raw = path.read_text(encoding="utf-8-sig")
+        try:
+            raw = path.read_text(encoding=args.encoding)
+        except UnicodeDecodeError as exc:
+            print(
+                f"csvcut: {path} is not valid {exc.encoding} (byte 0x{exc.object[exc.start]:02x} at offset "
+                f"{exc.start}); try --encoding cp1252 or --encoding latin-1",
+                file=sys.stderr,
+            )
+            return 1
 
     rows = [r for r in csv.reader(io.StringIO(raw), delimiter=args.delimiter) if r]
     if not rows:

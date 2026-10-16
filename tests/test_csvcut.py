@@ -95,3 +95,27 @@ def test_cli_rename_after_cut(tmp_path, capsys):
     # a dropped column cannot be renamed
     assert main([str(src), "-x", "name", "-r", "name=full_name"]) == 2
     assert "cannot rename 'name'" in capsys.readouterr().err
+
+
+def test_cli_encoding_reads_cp1252_and_writes_utf8(tmp_path):
+    src, dst = tmp_path / "legacy.csv", tmp_path / "out.csv"
+    src.write_bytes("id;naam;stad\n1;Zoë;Café Noord\n".encode("cp1252"))
+    assert main([str(src), "-c", "stad,naam", "-d", ";", "--encoding", "cp1252", "-o", str(dst)]) == 0
+    assert dst.read_text(encoding="utf-8") == "stad;naam\nCafé Noord;Zoë\n"
+
+
+def test_cli_undecodable_input_is_a_clear_error(tmp_path, capsys):
+    src = tmp_path / "legacy.csv"
+    src.write_bytes("id,name\n1,Zoë\n".encode("cp1252"))
+    assert main([str(src), "-c", "name"]) == 1
+    err = capsys.readouterr().err
+    assert "is not valid utf-8" in err and "byte 0xeb at offset 12" in err and "--encoding cp1252" in err
+
+
+def test_cli_unknown_encoding_rejected(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    src.write_text("a\n1\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        main([str(src), "-c", "a", "--encoding", "nope-42"])
+    assert exc.value.code == 2
+    assert "unknown encoding: nope-42" in capsys.readouterr().err

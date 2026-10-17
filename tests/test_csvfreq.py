@@ -62,3 +62,21 @@ def test_cli_errors(tmp_path, capsys):
     empty.write_text("a,b\n,2\n", encoding="utf-8")
     assert main([str(empty), "-c", "a", "--no-blank"]) == 1
     assert "no values to count" in capsys.readouterr().err
+
+
+def test_sort_by_value_numbers_numerically_text_after_blank_last():
+    from minitools.csvfreq import sort_by_value
+
+    counted = [(("10",), 5), ((BLANK,), 4), (("b",), 3), (("2",), 2), (("A",), 2), (("1_000",), 1), (("nan",), 1)]
+    assert [k[0] for k, _ in sort_by_value(counted)] == ["2", "10", "1_000", "A", "b", "nan", BLANK]
+
+
+def test_cli_sort_value_applies_after_top(tmp_path, capsys):
+    src = tmp_path / "ratings.csv"
+    src.write_text("rating\n10\n2\n2\n10\n10\n9\n1\n", encoding="utf-8")
+    assert main([str(src), "-c", "rating", "--sort", "value", "--csv"]) == 0
+    assert capsys.readouterr().out.splitlines()[1:] == ["1,1,14.3", "2,2,28.6", "9,1,14.3", "10,3,42.9"]
+    assert main([str(src), "-c", "rating", "-n", "2", "--sort", "value", "--csv"]) == 0
+    assert capsys.readouterr().out.splitlines()[1:] == ["2,2,28.6", "10,3,42.9"]
+    with pytest.raises(SystemExit):
+        main([str(src), "-c", "rating", "--sort", "alpha"])

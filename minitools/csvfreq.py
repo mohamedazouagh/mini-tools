@@ -6,7 +6,9 @@ first, with its share of the counted rows. Cells are trimmed; empty cells are
 counted as "(blank)" so missing data stays visible, or left out (and out of
 the shares) with `--no-blank`.
 `-i` merges values that differ only in case (the most common spelling is
-shown). Reads a file or stdin ("-"), prints an aligned table or `--csv`.
+shown). `--sort value` lists values in their natural order instead (numbers
+numerically, so ratings 1..10 read top to bottom). Reads a file or stdin
+("-"), prints an aligned table or `--csv`.
 
     python -m minitools.csvfreq orders.csv -c country
     python -m minitools.csvfreq orders.csv -c country,status -n 5 -d ';'
@@ -17,6 +19,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import math
 import sys
 from collections import Counter
 from pathlib import Path
@@ -60,6 +63,31 @@ def count_values(
     return sorted(shown, key=lambda kv: (-kv[1], kv[0]))
 
 
+def _value_key(v: str) -> tuple:
+    """Sort key for one cell: numbers first (numerically), then text (case-insensitive), (blank) last."""
+    if v == BLANK:
+        return (2, 0.0, "")
+    if "_" not in v:  # "1_000" stays text, like csvstats
+        try:
+            num = float(v)
+        except ValueError:
+            pass
+        else:
+            if math.isfinite(num):  # "nan"/"inf" are text too
+                return (0, num, v)
+    return (1, 0.0, v.casefold())
+
+
+def sort_by_value(counted: list[tuple[tuple[str, ...], int]]) -> list[tuple[tuple[str, ...], int]]:
+    """Reorder a frequency table by its values instead of its counts.
+
+    Handy for ordinal columns (ratings 1-5, sizes, years) where the natural
+    order matters more than popularity. Numeric cells sort as numbers
+    ("2" before "10"), text case-insensitively, "(blank)" goes last.
+    """
+    return sorted(counted, key=lambda kv: tuple(_value_key(v) for v in kv[0]))
+
+
 def format_table(names: list[str], counted: list[tuple[tuple[str, ...], int]], total: int) -> str:
     header = [*names, "count", "share"]
     body = [[*key, str(n), f"{n / total * 100:.1f}%"] for key, n in counted]
@@ -79,6 +107,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-n", "--top", type=int, default=0, help="show only the N most common values (default all)")
     p.add_argument("-i", "--ignore-case", action="store_true", help="merge values that differ only in case")
     p.add_argument("--no-blank", action="store_true", help="skip rows where the column(s) are empty")
+    p.add_argument(
+        "--sort",
+        choices=("count", "value"),
+        default="count",
+        help="order by count (default) or by value; numbers numerically, (blank) last; applied after -n",
+    )
     p.add_argument("--csv", action="store_true", help="write CSV instead of an aligned table")
     p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default ',')")
     args = p.parse_args(argv)
@@ -113,6 +147,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.top:
         counted = counted[: args.top]
+    if args.sort == "value":
+        counted = sort_by_value(counted)
 
     if args.csv:
         buf = io.StringIO()

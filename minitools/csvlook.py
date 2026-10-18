@@ -5,9 +5,11 @@ so digits line up. `-n` limits the preview to the first N data rows (0 = all)
 and `--max-width` cuts long cells with an ellipsis. `--markdown` prints a
 GitHub-style table (pipes in cells escaped) ready to paste into a README or
 issue. Wide characters (CJK, most emoji) count as two columns. Reads a file
-or stdin ("-"); a "showing N of M rows" note goes to stderr.
+or stdin ("-"); a "showing N of M rows" note goes to stderr. `-c a,b`
+shows only those columns, in that order (unknown names list the real ones).
 
     python -m minitools.csvlook sales.csv -n 10
+    python -m minitools.csvlook sales.csv -c country,amount
     python -m minitools.csvlook sales.csv --markdown --max-width 30 -d ';'
 """
 from __future__ import annotations
@@ -58,6 +60,22 @@ def _pad(text: str, width: int, right: bool) -> str:
     return gap + text if right else text + gap
 
 
+def select_columns(header: list[str], rows: list[list[str]], names: list[str]) -> tuple[list[str], list[list[str]]]:
+    """Keep only the columns called ``names`` (trimmed, in that order); short rows give empty cells.
+
+    Raises KeyError naming the unknown columns and listing the real headers.
+    """
+    stripped = [h.strip() for h in header]
+    wanted = [n.strip() for n in names if n.strip()]
+    if not wanted:
+        raise KeyError("no column names given")
+    unknown = [n for n in wanted if n not in stripped]
+    if unknown:
+        raise KeyError(f"unknown column(s): {', '.join(unknown)} (available: {', '.join(stripped)})")
+    idx = [stripped.index(n) for n in wanted]
+    return [header[i] for i in idx], [[r[i] if i < len(r) else "" for i in idx] for r in rows]
+
+
 def render(header: list[str], rows: list[list[str]], markdown: bool = False, max_width: int | None = None) -> str:
     """Format header + rows as an aligned table; short rows are padded with empty cells."""
     ncols = max([len(header)] + [len(r) for r in rows])
@@ -93,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-n", "--rows", type=int, default=20, help="data rows to show (default 20, 0 = all)")
     p.add_argument("--max-width", type=int, help="cut cells longer than this many columns")
     p.add_argument("--markdown", action="store_true", help="print a Markdown table")
+    p.add_argument("-c", "--columns", help="comma-separated column names to show, in this order")
     p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default ',')")
     args = p.parse_args(argv)
 
@@ -116,6 +135,12 @@ def main(argv: list[str] | None = None) -> int:
         print("csvlook: input has no header row", file=sys.stderr)
         return 1
     header, data = rows[0], rows[1:]
+    if args.columns:
+        try:
+            header, data = select_columns(header, data, args.columns.split(","))
+        except KeyError as e:
+            print(f"csvlook: {e.args[0]}", file=sys.stderr)
+            return 2
     shown = data if args.rows == 0 else data[: args.rows]
     sys.stdout.write(render(header, shown, markdown=args.markdown, max_width=args.max_width))
     if len(shown) < len(data):

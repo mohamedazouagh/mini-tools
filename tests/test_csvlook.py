@@ -84,3 +84,31 @@ def test_cli_missing_file_and_empty_input(tmp_path, capsys):
     assert main([str(empty)]) == 1
     err = capsys.readouterr().err
     assert "no such file" in err and "no header row" in err
+
+
+def test_select_columns_reorders_trims_and_pads_short_rows():
+    from minitools.csvlook import select_columns
+
+    header, rows = select_columns([" id", "name ", "amount"], [["1", "Ada", "5"], ["2"]], ["amount", " id"])
+    assert header == ["amount", " id"]
+    assert rows == [["5", "1"], ["", "2"]]
+
+
+def test_select_columns_unknown_or_empty_names():
+    from minitools.csvlook import select_columns
+
+    with pytest.raises(KeyError, match=r"unknown column\(s\): nope \(available: id, name\)"):
+        select_columns(["id", "name"], [], ["id", "nope"])
+    with pytest.raises(KeyError, match="no column names"):
+        select_columns(["id"], [], [" ", ""])
+
+
+def test_main_columns_flag(tmp_path, capsys):
+    f = tmp_path / "s.csv"
+    f.write_text("id,country,amount\n1,NL,10\n2,BE,250\n", encoding="utf-8")
+    assert main([str(f), "-c", "amount,country"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "amount  country"
+    assert out[2] == "    10  NL"
+    assert main([str(f), "-c", "price"]) == 2
+    assert "unknown column(s): price (available: id, country, amount)" in capsys.readouterr().err

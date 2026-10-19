@@ -8,7 +8,9 @@ the shares) with `--no-blank`.
 `-i` merges values that differ only in case (the most common spelling is
 shown). `--sort value` lists values in their natural order instead (numbers
 numerically, so ratings 1..10 read top to bottom). Reads a file or stdin
-("-"), prints an aligned table or `--csv`.
+("-"), prints an aligned table or `--csv`. Files are read as UTF-8 (a BOM is
+fine) unless `--encoding cp1252` or similar is given for a legacy export;
+undecodable input gives a short error instead of a traceback.
 
     python -m minitools.csvfreq orders.csv -c country
     python -m minitools.csvfreq orders.csv -c country,status -n 5 -d ';'
@@ -115,9 +117,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--csv", action="store_true", help="write CSV instead of an aligned table")
     p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default ',')")
+    p.add_argument("--encoding", default="utf-8-sig", help="encoding of the input file, e.g. cp1252 (default UTF-8)")
     args = p.parse_args(argv)
     if args.top < 0:
         p.error("--top must be >= 0")
+    try:
+        "".encode(args.encoding)
+    except LookupError:
+        p.error(f"unknown encoding: {args.encoding}")
 
     if args.input == "-":
         raw = sys.stdin.read()
@@ -126,7 +133,15 @@ def main(argv: list[str] | None = None) -> int:
         if not path.is_file():
             print(f"csvfreq: no such file: {path}", file=sys.stderr)
             return 1
-        raw = path.read_text(encoding="utf-8-sig")
+        try:
+            raw = path.read_text(encoding=args.encoding)
+        except UnicodeDecodeError as exc:
+            print(
+                f"csvfreq: {path} is not valid {exc.encoding} (byte 0x{exc.object[exc.start]:02x} at offset "
+                f"{exc.start}); try --encoding cp1252 or --encoding latin-1",
+                file=sys.stderr,
+            )
+            return 1
 
     rows = [r for r in csv.reader(io.StringIO(raw), delimiter=args.delimiter) if any(c.strip() for c in r)]
     if not rows:

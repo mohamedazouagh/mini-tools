@@ -80,3 +80,17 @@ def test_cli_sort_value_applies_after_top(tmp_path, capsys):
     assert capsys.readouterr().out.splitlines()[1:] == ["2,2,28.6", "10,3,42.9"]
     with pytest.raises(SystemExit):
         main([str(src), "-c", "rating", "--sort", "alpha"])
+
+
+def test_cli_encoding_reads_legacy_export_and_explains_bad_bytes(tmp_path, capsys):
+    src = tmp_path / "legacy.csv"
+    src.write_bytes("city\nZ\u00fcrich\nZ\u00fcrich\nGen\u00e8ve\n".encode("cp1252"))
+    assert main([str(src), "-c", "city"]) == 1
+    err = capsys.readouterr().err
+    assert "is not valid utf-8 (byte 0xfc at offset 6); try --encoding cp1252" in err
+    assert main([str(src), "-c", "city", "--encoding", "cp1252", "--csv"]) == 0
+    assert capsys.readouterr().out == "city,count,share\nZ\u00fcrich,2,66.7\nGen\u00e8ve,1,33.3\n"
+    with pytest.raises(SystemExit):
+        main([str(src), "-c", "city", "--encoding", "klingon"])
+    assert "unknown encoding: klingon" in capsys.readouterr().err
+

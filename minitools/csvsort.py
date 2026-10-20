@@ -4,7 +4,8 @@ A key column whose non-empty cells all parse as numbers is sorted
 numerically (so 10 comes after 9); any other column is sorted as text,
 case-insensitively. Empty cells always go last, also with `--reverse`.
 The sort is stable, so rows with equal keys keep their input order.
-Unknown column names fail with the list of real headers.
+Unknown column names fail with the list of real headers. Quoted cells that
+span several lines (notes, addresses) keep their line breaks.
 
     python -m minitools.csvsort in.csv -k country,amount [-r] [-d ';'] [-o out.csv]
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import sys
 from pathlib import Path
 
@@ -66,7 +68,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"csvsort: no such file: {src}", file=sys.stderr)
             return 1
         text = src.read_text(encoding="utf-8-sig")
-    table = [r for r in csv.reader(text.splitlines(), delimiter=args.delimiter) if r]
+    # parse the text as one stream, not line by line: splitting into lines first
+    # silently drops the line breaks inside quoted multi-line cells
+    table = [r for r in csv.reader(io.StringIO(text, newline=""), delimiter=args.delimiter) if r]
     if not table:
         print("csvsort: input is empty", file=sys.stderr)
         return 1

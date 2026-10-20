@@ -54,3 +54,16 @@ def test_cli_unknown_column_lists_headers(tmp_path, capsys):
 def test_cli_missing_file(tmp_path, capsys):
     assert main([str(tmp_path / "nope.csv"), "-k", "a"]) == 1
     assert "no such file" in capsys.readouterr().err
+
+
+def test_cli_keeps_line_breaks_inside_quoted_cells(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    src.write_bytes(b'id,note\r\n2,"line one\r\nline two"\r\n1,plain\r\n')
+    assert main([str(src), "-k", "id"]) == 0
+    assert capsys.readouterr().out == 'id,note\n1,plain\n2,"line one\nline two"\n'
+
+
+def test_cli_multiline_cell_from_stdin(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO('k,v\nb,"x\ny"\na,z\n'))
+    assert main(["-", "-k", "k"]) == 0
+    assert capsys.readouterr().out == 'k,v\na,z\nb,"x\ny"\n'

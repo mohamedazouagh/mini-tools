@@ -69,3 +69,29 @@ def test_cli_stdout(tmp_path, capsys):
     right = _write(tmp_path / "r.csv", "id,b\n1,y\n")
     assert main([left, right, "-k", "id"]) == 0
     assert capsys.readouterr().out == "id,a,b\n1,x,y\n"
+
+
+def test_ignore_case_matches_keys_but_keeps_original_text():
+    lh, lrows = ["email", "plan"], [["Ana@Example.com ", "pro"], ["bo@example.com", "free"], ["STRASSE@x.de", "pro"]]
+    rh, rrows = ["email", "signed_up"], [["ana@example.com", "2026-10-01"], ["straße@x.de", "2026-10-03"]]
+    header, rows, unmatched = join_rows(lh, lrows, rh, rrows, "email", "email", "left", ignore_case=True)
+    assert header == ["email", "plan", "signed_up"]
+    assert rows == [
+        ["Ana@Example.com ", "pro", "2026-10-01"],
+        ["bo@example.com", "free", ""],
+        ["STRASSE@x.de", "pro", "2026-10-03"],
+    ]
+    assert unmatched == 1
+    # without the flag the same keys do not match
+    assert join_rows(lh, lrows, rh, rrows, "email", "email")[1] == []
+
+
+def test_cli_ignore_case_flag(tmp_path, capsys):
+    left, right = tmp_path / "l.csv", tmp_path / "r.csv"
+    left.write_text("code,qty\nNL,2\nbe,1\n", encoding="utf-8")
+    right.write_text("code,country\nnl,Netherlands\nBE,Belgium\n", encoding="utf-8")
+    assert main([str(left), str(right), "-k", "code", "-i"]) == 0
+    out = capsys.readouterr()
+    assert out.out == "code,qty,country\nNL,2,Netherlands\nbe,1,Belgium\n"
+    assert "0 left rows without a match" in out.err
+

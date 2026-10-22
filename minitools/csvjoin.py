@@ -2,11 +2,13 @@
 
 Every left row is combined with every right row whose key matches (keys are
 compared after trimming spaces). --how left keeps left rows without a match,
-with the right columns left empty. Right columns whose name clashes with a
+with the right columns left empty. -i/--ignore-case matches keys regardless
+of case ("Ana@Example.com" joins "ana@example.com"). Right columns whose name clashes with a
 left column get a "_right" suffix; the right key column is not repeated.
 
     python -m minitools.csvjoin orders.csv customers.csv -k customer_id [-o out.csv]
     python -m minitools.csvjoin a.csv b.csv -k id --right-key ID --how left -d ';'
+    python -m minitools.csvjoin users.csv signups.csv -k email -i
 """
 from __future__ import annotations
 
@@ -37,11 +39,14 @@ def join_rows(
     left_key: str,
     right_key: str,
     how: str = "inner",
+    ignore_case: bool = False,
 ) -> tuple[list[str], list[list[str]], int]:
     """Join two tables; returns (header, rows, number of unmatched left rows).
 
     Output order follows the left table, then the right table's order for
-    multiple matches. Raises KeyError for a missing key column and ValueError
+    multiple matches. With ``ignore_case`` keys are compared casefolded
+    (so "STRASSE" matches "straße"); output cells keep their original text.
+    Raises KeyError for a missing key column and ValueError
     for an unknown ``how``.
     """
     if how not in ("inner", "left"):
@@ -55,15 +60,19 @@ def join_rows(
     taken = set(left_header)
     extra = [right_header[i] + "_right" if right_header[i] in taken else right_header[i] for i in keep]
 
+    def norm(key: str) -> str:
+        key = key.strip()
+        return key.casefold() if ignore_case else key
+
     index: dict[str, list[list[str]]] = {}
     for row in right_rows:
-        index.setdefault(_cell(row, ri).strip(), []).append(row)
+        index.setdefault(norm(_cell(row, ri)), []).append(row)
 
     out: list[list[str]] = []
     unmatched = 0
     for row in left_rows:
         base = [_cell(row, i) for i in range(len(left_header))]
-        matches = index.get(_cell(row, li).strip(), [])
+        matches = index.get(norm(_cell(row, li)), [])
         if not matches:
             unmatched += 1
             if how == "left":
@@ -81,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-k", "--key", required=True, help="key column in the left file (and right, unless --right-key)")
     p.add_argument("--right-key", help="key column name in the right file, if different")
     p.add_argument("--how", choices=("inner", "left"), default="inner", help="join type (default: inner)")
+    p.add_argument("-i", "--ignore-case", action="store_true", help="match keys regardless of upper/lower case")
     p.add_argument("-o", "--output", type=Path, help="output CSV (default: stdout)")
     p.add_argument("-d", "--delimiter", default=",", help="field separator for input and output (default ',')")
     p.add_argument("--force", action="store_true", help="overwrite an existing output file")
@@ -96,7 +106,9 @@ def main(argv: list[str] | None = None) -> int:
     lh, lrows = read_csv(args.left, args.delimiter)
     rh, rrows = read_csv(args.right, args.delimiter)
     try:
-        header, rows, unmatched = join_rows(lh, lrows, rh, rrows, args.key, args.right_key or args.key, args.how)
+        header, rows, unmatched = join_rows(
+            lh, lrows, rh, rrows, args.key, args.right_key or args.key, args.how, args.ignore_case
+        )
     except KeyError as exc:
         print(f"csvjoin: {exc.args[0]}", file=sys.stderr)
         return 1

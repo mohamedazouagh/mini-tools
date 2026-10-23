@@ -62,3 +62,38 @@ def test_cli_value_and_errors(tmp_path, capsys):
     empty = tmp_path / "empty.csv"
     empty.write_text("", encoding="utf-8")
     assert main([str(empty), "--all"]) == 1
+
+
+def test_within_stops_values_crossing_into_the_next_group():
+    rows = [["North", "Breda", "1"], ["", "", "2"], ["South", "", "3"], ["", "Gouda", "4"], ["", "", "5"]]
+    plain, _ = fill_rows(rows, [0, 1])
+    assert plain[2] == ["South", "Breda", "3"]  # without --within the store leaks across regions
+    out, n = fill_rows(rows, [0, 1], within=0)
+    assert out == [
+        ["North", "Breda", "1"],
+        ["North", "Breda", "2"],
+        ["South", "", "3"],
+        ["South", "Gouda", "4"],
+        ["South", "Gouda", "5"],
+    ]
+    assert n == 5
+
+
+def test_within_column_not_filled_itself():
+    # group column is not in -c: groups are read as they are (blank is its own group)
+    rows = [["A", "x"], ["A", ""], ["", ""], ["B", ""]]
+    out, n = fill_rows(rows, [1], within=0)
+    assert out == [["A", "x"], ["A", "x"], ["", ""], ["B", ""]]
+    assert n == 1
+
+
+def test_cli_within_and_errors(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    src.write_text("region,store,sales\nNorth,Breda,1\nSouth,,2\n,Gouda,3\n,,4\n", encoding="utf-8")
+    assert main([str(src), "-c", "region,store", "--within", "region"]) == 0
+    assert capsys.readouterr().out == "region,store,sales\nNorth,Breda,1\nSouth,,2\nSouth,Gouda,3\nSouth,Gouda,4\n"
+    assert main([str(src), "-c", "store", "--within", "zone"]) == 2
+    assert "unknown column(s): zone" in capsys.readouterr().err
+    assert main([str(src), "-c", "store", "--within", "region", "--value", "0"]) == 2
+    assert "--within only applies to filling down" in capsys.readouterr().err
+

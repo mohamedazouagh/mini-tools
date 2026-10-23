@@ -8,9 +8,15 @@ each listed column into the blank cells below it; `--all` does every column.
 contain only spaces count as blank. Blank cells before the first value of a
 column stay blank (there is nothing to copy).
 
+`--within region` stops values leaking from one group into the next: whenever
+the (filled) value of the region column changes, the remembered values of the
+other columns are forgotten, so a new region whose first store cell is blank
+stays blank instead of inheriting the previous region's last store.
+
     python -m minitools.csvfill report.csv -c region,store -o tidy.csv
     python -m minitools.csvfill report.csv --all -d ';'
     python -m minitools.csvfill scores.csv -c score --value 0 --stats
+    python -m minitools.csvfill report.csv -c region,store --within region
 
 Reads a file or stdin ("-"), writes stdout or -o. Unknown column names list the
 real headers (exit 2).
@@ -35,20 +41,33 @@ def resolve_columns(header: list[str], names: list[str]) -> list[int]:
     return [header.index(n) for n in names]
 
 
-def fill_rows(rows: list[list[str]], idx: list[int], value: str | None = None) -> tuple[list[list[str]], int]:
+def fill_rows(
+    rows: list[list[str]], idx: list[int], value: str | None = None, within: int | None = None
+) -> tuple[list[list[str]], int]:
     """Fill blank cells in the given column indexes.
 
     With ``value`` None, each blank cell gets the last non-blank value above it
-    in the same column; otherwise it gets ``value``. Short rows are padded so
-    the filled columns exist. Returns (new rows, number of cells filled).
+    in the same column; otherwise it gets ``value``. With ``within`` set to a
+    column index, filled-down values are forgotten whenever that column's value
+    (after its own fill) changes, so they never cross into the next group.
+    Short rows are padded so the filled columns exist. Returns (new rows,
+    number of cells filled).
     """
     last: dict[int, str] = {}
     filled = 0
     out: list[list[str]] = []
-    width = max(idx, default=-1) + 1
+    width = max(idx + ([within] if within is not None else []), default=-1) + 1
+    # Fill the group column first so the group of each row is known before the rest.
+    order = ([within] if within in idx else []) + [i for i in idx if i != within]
+    group: str | None = None
     for row in rows:
         new = row + [""] * (width - len(row)) if len(row) < width else list(row)
-        for i in idx:
+        for i in order:
+            if i != within and within is not None:
+                current = new[within].strip()
+                if current != group:
+                    group = current
+                    last = {k: v for k, v in last.items() if k == within}
             if new[i].strip():
                 last[i] = new[i]
                 continue
@@ -67,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     which.add_argument("-c", "--columns", help="comma-separated columns to fill")
     which.add_argument("--all", action="store_true", help="fill every column")
     p.add_argument("--value", help="write this into blank cells instead of filling down")
+    p.add_argument("--within", metavar="COLUMN", help="restart filling down whenever this column's value changes")
     p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default ',')")
     p.add_argument("-o", "--output", type=Path, help="write here instead of stdout")
     p.add_argument("--stats", action="store_true", help="print how many cells were filled to stderr")
@@ -91,11 +111,15 @@ def main(argv: list[str] | None = None) -> int:
             idx = list(range(len(header)))
         else:
             idx = resolve_columns(header, [n.strip() for n in args.columns.split(",") if n.strip()])
+        within = resolve_columns(header, [args.within.strip()])[0] if args.within else None
     except ColumnError as e:
         print(f"csvfill: {e}", file=sys.stderr)
         return 2
+    if within is not None and args.value is not None:
+        print("csvfill: --within only applies to filling down, not with --value", file=sys.stderr)
+        return 2
 
-    body, filled = fill_rows(rows[1:], idx, args.value)
+    body, filled = fill_rows(rows[1:], idx, args.value, within)
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=args.delimiter, lineterminator="\n")
     writer.writerow(header)

@@ -69,3 +69,32 @@ def test_cli_errors(tmp_path, capsys):
     empty = tmp_path / "empty.csv"
     empty.write_text("", encoding="utf-8")
     assert main([str(empty), "-k", "id"]) == 1
+
+
+def test_add_count_column_counts_all_rows_per_key():
+    from minitools.csvuniq import add_count_column
+
+    kept = unique_rows(ROWS, [0], keep="last")
+    assert add_count_column(kept, ROWS, [0], 3) == [["1", "ana", "4", "2"], ["3", "cy", "0", "1"], [" 2 ", "bo", "2", "2"]]
+    # short rows are padded so the count lands in its own column
+    assert add_count_column([["1"]], [["1"], ["1", "x"]], [0], 2) == [["1", "", "2"]]
+
+
+def test_cli_count_with_ignore_case_and_dupes(monkeypatch, capsys):
+    data = "email,n\nA@x.nl,1\nb@x.nl,2\na@X.NL,3\n"
+    monkeypatch.setattr("sys.stdin", io.StringIO(data))
+    assert main(["-", "-k", "email", "-i", "--count", "copies"]) == 0
+    assert capsys.readouterr().out == "email,n,copies\nA@x.nl,1,2\nb@x.nl,2,1\n"
+    monkeypatch.setattr("sys.stdin", io.StringIO(data))
+    assert main(["-", "-k", "email", "-i", "--dupes", "--count", "copies", "--stats"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == "email,n,copies\nA@x.nl,1,2\na@X.NL,3,2\n"
+    assert "3 rows, 2 distinct keys, 2 repeated rows" in captured.err
+
+
+@pytest.mark.parametrize("name", ["n", " ", ""])
+def test_cli_count_rejects_existing_or_blank_name(tmp_path, capsys, name):
+    src = tmp_path / "in.csv"
+    src.write_text("id,n\n1,2\n", encoding="utf-8")
+    assert main([str(src), "-k", "id", "--count", name]) == 2
+    assert "--count needs a new" in capsys.readouterr().err

@@ -1,4 +1,5 @@
 import io
+import re
 
 import pytest
 
@@ -66,3 +67,26 @@ def test_cli_errors(tmp_path, capsys):
     empty = tmp_path / "empty.csv"
     empty.write_text("", encoding="utf-8")
     assert main([str(empty)]) == 1
+
+
+def test_value_patterns_expand_in_header_order():
+    header = ["store", "region", "2026-08", "2026-09", "note", "2026-10"]
+    assert plan_columns(header, ["store"], ["2026-*"]) == ([0], [2, 3, 5])
+    assert plan_columns(header, ["store"], ["2026-1?", "2026-0[8]"]) == ([0], [5, 2])
+    # a column named explicitly and matched again by a pattern is melted once
+    assert plan_columns(header, ["store"], ["2026-10", "2026-*"]) == ([0], [5, 2, 3])
+    # patterns skip id columns instead of tripping the id/value overlap check
+    assert plan_columns(["id", "a", "b"], ["id"], ["*"]) == ([0], [1, 2])
+
+
+def test_value_patterns_are_case_sensitive_and_must_match():
+    with pytest.raises(ColumnError, match=re.escape("pattern 'Q*' matches no column; available: id, q1, q2")):
+        plan_columns(["id", "q1", "q2"], ["id"], ["Q*"])
+
+
+def test_cli_value_pattern_skips_info_columns(tmp_path):
+    src = tmp_path / "wide.csv"
+    src.write_text("store,manager,2026-09,2026-10\nBreda,An,5,6\n", encoding="utf-8")
+    dst = tmp_path / "long.csv"
+    assert main([str(src), "-i", "store", "-v", "2026-*", "--var-name", "month", "-o", str(dst)]) == 0
+    assert dst.read_text(encoding="utf-8") == "store,month,value\nBreda,2026-09,5\nBreda,2026-10,6\n"

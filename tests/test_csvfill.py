@@ -97,3 +97,27 @@ def test_cli_within_and_errors(tmp_path, capsys):
     assert main([str(src), "-c", "store", "--within", "region", "--value", "0"]) == 2
     assert "--within only applies to filling down" in capsys.readouterr().err
 
+
+
+def test_cli_up_fills_from_the_value_below(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    # label printed on the last row of each group; the trailing blank has nothing below it
+    src.write_text("region,store,sales\n,Breda,10\n,Gouda,12\nNorth,subtotal,22\n,Delft,5\nSouth,subtotal,5\n,extra,1\n",
+                   encoding="utf-8")
+    assert main([str(src), "-c", "region", "--up", "--stats"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == (
+        "region,store,sales\nNorth,Breda,10\nNorth,Gouda,12\nNorth,subtotal,22\n"
+        "South,Delft,5\nSouth,subtotal,5\n,extra,1\n"
+    )
+    assert "filled 3 cells in 6 rows" in captured.err
+
+
+def test_cli_up_with_within_and_rejects_value(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    src.write_text("region,store\nNorth,\nNorth,Breda\nSouth,\n", encoding="utf-8")
+    assert main([str(src), "-c", "store", "--up", "--within", "region"]) == 0
+    # South's blank store must not borrow North's value, and North's first row gets Breda from below
+    assert capsys.readouterr().out == "region,store\nNorth,Breda\nNorth,Breda\nSouth,\n"
+    assert main([str(src), "-c", "store", "--up", "--value", "x"]) == 2
+    assert "--up only applies to filling" in capsys.readouterr().err

@@ -17,6 +17,11 @@ stays blank instead of inheriting the previous region's last store.
     python -m minitools.csvfill report.csv --all -d ';'
     python -m minitools.csvfill scores.csv -c score --value 0 --stats
     python -m minitools.csvfill report.csv -c region,store --within region
+    python -m minitools.csvfill subtotals.csv -c region --up
+
+`--up` fills from the next non-blank value below instead, for reports that
+print the group label on the last row of each group (next to a subtotal).
+Blank cells after the last value stay blank; `--within` works the same way.
 
 Reads a file or stdin ("-"), writes stdout or -o. Unknown column names list the
 real headers (exit 2).
@@ -87,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     which.add_argument("--all", action="store_true", help="fill every column")
     p.add_argument("--value", help="write this into blank cells instead of filling down")
     p.add_argument("--within", metavar="COLUMN", help="restart filling down whenever this column's value changes")
+    p.add_argument("--up", action="store_true", help="fill from the next non-blank value below instead of above")
     p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default ',')")
     p.add_argument("-o", "--output", type=Path, help="write here instead of stdout")
     p.add_argument("--stats", action="store_true", help="print how many cells were filled to stderr")
@@ -119,7 +125,15 @@ def main(argv: list[str] | None = None) -> int:
         print("csvfill: --within only applies to filling down, not with --value", file=sys.stderr)
         return 2
 
-    body, filled = fill_rows(rows[1:], idx, args.value, within)
+    if args.up and args.value is not None:
+        print("csvfill: --up only applies to filling, not with --value", file=sys.stderr)
+        return 2
+
+    if args.up:
+        body, filled = fill_rows(rows[:0:-1], idx, None, within)
+        body.reverse()
+    else:
+        body, filled = fill_rows(rows[1:], idx, args.value, within)
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=args.delimiter, lineterminator="\n")
     writer.writerow(header)

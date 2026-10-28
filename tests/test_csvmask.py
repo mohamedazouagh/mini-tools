@@ -4,7 +4,7 @@ import io
 
 import pytest
 
-from minitools.csvmask import ColumnError, hash_token, main, mask_rows, mask_value, parse_specs
+from minitools.csvmask import ColumnError, email_token, hash_token, main, mask_rows, mask_value, parse_specs
 
 
 def test_hash_token_is_stable_salted_and_trimmed():
@@ -78,3 +78,26 @@ def test_cli_errors(tmp_path, capsys):
     assert "available: id, phone" in capsys.readouterr().err
     assert main([str(src), "-c", "phone:mask", "--keep", "-1"]) == 2
     assert main([str(tmp_path / "nope.csv"), "-c", "id"]) == 1
+
+
+def test_email_token_keeps_domain_and_falls_back_to_hash():
+    tok = email_token(" ana@Example.COM ", "k")
+    assert tok == hash_token("ana", "k") + "@example.com"
+    assert email_token("ana@example.com", "k") == tok
+    assert email_token("Ana@example.com", "k") != tok
+    assert email_token("Ana@example.com", "k", ignore_case=True) == tok
+    for odd in ("no-at-sign", "@example.com", "ana@", "a@b@c"):
+        assert email_token(odd, "k") == hash_token(odd, "k")
+    assert email_token("  ", "k") == ""
+
+
+def test_cli_email_mode_lets_you_count_per_domain(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    src.write_text("id,email\n1,ana@x.nl\n2,bas@y.com\n3,ana@x.nl\n4,\n", encoding="utf-8")
+    assert main([str(src), "-c", "email:email"]) == 0
+    out = capsys.readouterr()
+    emails = [line.split(",")[1] for line in out.out.splitlines()[1:]]
+    assert [e.split("@")[1] for e in emails[:3]] == ["x.nl", "y.com", "x.nl"]
+    assert emails[0] == emails[2] and "ana" not in emails[0]
+    assert emails[3] == ""
+    assert "warning" in out.err  # no salt given

@@ -12,6 +12,10 @@
   rest with `*`, e.g. a phone number `0612345678` -> `******5678`. Cells not
   longer than `--keep` are masked completely.
 - `blank`: empty the cell.
+- `email`: hash only the part before the @ and keep the domain, e.g.
+  `ana@example.com` -> `3f1c0a9b7e21@example.com`, so you can still count
+  customers per domain. The domain is lowercased; cells without exactly one
+  @ (or with an empty side) are hashed whole, like `hash`.
 
 Cells are trimmed first; empty cells stay empty. `-i` lowercases before
 hashing so `Ana@Example.com` and `ana@example.com` get the same token.
@@ -33,7 +37,7 @@ import os
 import sys
 from pathlib import Path
 
-MODES = ("hash", "mask", "blank")
+MODES = ("hash", "mask", "blank", "email")
 TOKEN_LEN = 12
 
 
@@ -76,6 +80,15 @@ def mask_value(value: str, keep: int = 4) -> str:
     return "*" * (len(v) - keep) + (v[-keep:] if keep else "")
 
 
+def email_token(value: str, salt: str, ignore_case: bool = False) -> str:
+    """Hash the local part of an e-mail address and keep its (lowercased) domain."""
+    v = value.strip()
+    local, at, domain = v.partition("@")
+    if not at or not local or not domain or "@" in domain:
+        return hash_token(v, salt, ignore_case)
+    return f"{hash_token(local, salt, ignore_case)}@{domain.lower()}"
+
+
 def mask_rows(
     rows: list[list[str]], specs: list[tuple[int, str]], salt: str = "", keep: int = 4, ignore_case: bool = False
 ) -> list[list[str]]:
@@ -90,6 +103,8 @@ def mask_rows(
                 new[i] = hash_token(new[i], salt, ignore_case)
             elif mode == "mask":
                 new[i] = mask_value(new[i], keep)
+            elif mode == "email":
+                new[i] = email_token(new[i], salt, ignore_case)
             else:
                 new[i] = ""
         out.append(new)
@@ -100,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("input", help='CSV file, or "-" for stdin')
     p.add_argument("-c", "--column", action="append", required=True, metavar="NAME[:MODE]",
-                   help="column to protect, mode hash (default), mask or blank; repeatable")
+                   help="column to protect, mode hash (default), mask, blank or email; repeatable")
     p.add_argument("--salt", help="secret for hash mode (default: $CSVMASK_SALT)")
     p.add_argument("--keep", type=int, default=4, help="characters left visible in mask mode (default 4)")
     p.add_argument("-i", "--ignore-case", action="store_true", help="lowercase values before hashing")
@@ -131,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"csvmask: {e}", file=sys.stderr)
         return 2
     salt = args.salt if args.salt is not None else os.environ.get("CSVMASK_SALT", "")
-    if not salt and any(mode == "hash" for _, mode in specs):
+    if not salt and any(mode in ("hash", "email") for _, mode in specs):
         print("csvmask: warning: hashing without --salt; guessable values can be recovered", file=sys.stderr)
 
     body = mask_rows(rows[1:], specs, salt, args.keep, args.ignore_case)

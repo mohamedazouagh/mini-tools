@@ -2,8 +2,10 @@
 
 A small GROUP BY for CSV files: `-g country` (or `-g country,status`) picks
 the group key, and each `-a` adds an output column: `count` (rows in the
-group), `col:sum`, `col:mean`, `col:min`, `col:max` (numeric) or
-`col:distinct` (number of different non-empty values). Without `-a` only the
+group), `col:sum`, `col:mean`, `col:median`, `col:min`, `col:max` (numeric)
+or `col:distinct` (number of different non-empty values). The median is
+exact and is not affected by a few huge values the way the mean is, which
+suits skewed columns like order amounts. Without `-a` only the
 row count is shown. Numbers are added up with `decimal`, so money columns
 like 0.10 + 0.20 come out as 0.30, not 0.30000000000000004. Cells are
 trimmed; empty cells are skipped by the numeric aggregates (a group without
@@ -27,7 +29,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 BLANK = "(blank)"
-NUMERIC = ("sum", "mean", "min", "max")
+NUMERIC = ("sum", "mean", "median", "min", "max")
 FUNCS = (*NUMERIC, "distinct")
 
 
@@ -125,6 +127,13 @@ def aggregate(g: _Group, agg: Agg, precision: int = 2) -> str:
         return _fmt(min(nums))
     if agg.func == "max":
         return _fmt(max(nums))
+    if agg.func == "median":
+        # exact: the middle value, or the average of the two middle ones (halving a
+        # Decimal never needs rounding), so 0.10 and 0.25 give 0.175, not 0.17
+        ordered = sorted(nums)
+        mid = len(ordered) // 2
+        median = ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+        return _fmt(median)
     mean = sum(nums, Decimal(0)) / len(nums)
     return _fmt(mean.quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP))
 
@@ -167,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-g", "--group", required=True, help="column, or comma-separated columns, to group by")
     p.add_argument(
         "-a", "--agg", action="append", default=[],
-        help="count or column:sum|mean|min|max|distinct (repeatable; default count)",
+        help="count or column:sum|mean|median|min|max|distinct (repeatable; default count)",
     )
     p.add_argument("--precision", type=int, default=2, help="decimals for mean (default 2)")
     p.add_argument("--csv", action="store_true", help="write CSV instead of an aligned table")

@@ -19,7 +19,8 @@ def test_parse_agg_specs():
     assert parse_agg("count") == Agg("count")
     assert parse_agg("amount:SUM") == Agg("sum", "amount")
     assert parse_agg("a:b:mean") == Agg("mean", "a:b")  # colon inside a column name
-    for bad in ["amount", "amount:median", ":sum"]:
+    assert parse_agg("amount:Median") == Agg("median", "amount")
+    for bad in ["amount", "amount:mode", ":sum"]:
         with pytest.raises(GroupError, match="bad aggregate"):
             parse_agg(bad)
 
@@ -52,6 +53,28 @@ def test_non_number_reports_line_and_unknown_column_lists_headers():
         build_table(HEADER, [(9, ["NL", "paid", "n/a", "z"])], ["country"], [Agg("sum", "amount")])
     with pytest.raises(GroupError, match="unknown column\\(s\\): land, price; available: country"):
         build_table(HEADER, ROWS, ["land"], [Agg("sum", "price")])
+
+
+def test_median_odd_even_exact_and_robust_to_outliers():
+    rows = [(2, ["a", "1"]), (3, ["a", "1000"]), (4, ["a", "2"]),   # odd: middle value
+            (5, ["b", "0.10"]), (6, ["b", "0.25"]),                  # even: exact average
+            (7, ["c", ""]), (8, ["d", "-3"]), (9, ["d", "-1"])]
+    table = build_table(["k", "v"], rows, ["k"], [Agg("median", "v"), Agg("mean", "v")])
+    assert table[0] == ["k", "v_median", "v_mean"]
+    assert table[1:] == [
+        ["a", "2", "334.33"],   # the outlier moves the mean, not the median
+        ["b", "0.175", "0.18"],  # not rounded to --precision
+        ["c", "", ""],
+        ["d", "-2", "-2.00"],
+    ]
+    shuffled = [(2, ["a", "5"]), (3, ["a", "1"]), (4, ["a", "4"]), (5, ["a", "2"])]
+    assert build_table(["k", "v"], shuffled, ["k"], [Agg("median", "v")])[1] == ["a", "3"]
+
+
+def test_cli_median_column(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO("city,amount\nBreda,10\nBreda,30\nBreda,500\nUtrecht,7\n"))
+    assert main(["-", "-g", "city", "-a", "amount:median", "--csv"]) == 0
+    assert capsys.readouterr().out.splitlines() == ["city,amount_median", "Breda,30", "Utrecht,7"]
 
 
 def test_mean_precision_rounds_half_up():
@@ -87,5 +110,5 @@ def test_cli_bad_number_exit_2_with_file_line(tmp_path, capsys):
 def test_cli_missing_file_and_bad_agg(tmp_path, capsys):
     assert main([str(tmp_path / "nope.csv"), "-g", "k"]) == 1
     with pytest.raises(SystemExit) as exc:
-        main([str(tmp_path / "nope.csv"), "-g", "k", "-a", "v:median"])
+        main([str(tmp_path / "nope.csv"), "-g", "k", "-a", "v:mode"])
     assert exc.value.code == 2

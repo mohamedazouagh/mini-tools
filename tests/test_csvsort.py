@@ -67,3 +67,34 @@ def test_cli_multiline_cell_from_stdin(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('k,v\nb,"x\ny"\na,z\n'))
     assert main(["-", "-k", "k"]) == 0
     assert capsys.readouterr().out == 'k,v\na,z\nb,"x\ny"\n'
+
+
+def test_per_key_direction():
+    # country A-Z, then amount high to low inside each country; empty amount still last
+    out = sort_rows(HEADER, ROWS, ["country", "amount:desc"])
+    assert names(out) == ["dee", "bo", "ana", "eli", "cem"]
+    assert names(sort_rows(HEADER, ROWS, ["amount:asc"])) == names(sort_rows(HEADER, ROWS, ["amount"]))
+    assert names(sort_rows(HEADER, ROWS, ["amount:DESC"])) == ["dee", "ana", "bo", "eli", "cem"]
+
+
+def test_reverse_flips_per_key_directions():
+    out = sort_rows(HEADER, ROWS, ["country", "amount:desc"], reverse=True)
+    assert names(out) == ["eli", "ana", "cem", "bo", "dee"]  # country Z-A, amount low to high, empty last
+
+
+def test_header_containing_desc_suffix_stays_reachable():
+    header = ["id", "rank:desc"]
+    rows = [["a", "2"], ["b", "1"]]
+    assert names(sort_rows(header, rows, ["rank:desc"])) == ["b", "a"]  # the column, ascending
+    try:
+        sort_rows(HEADER, ROWS, ["price:desc"])
+    except KeyError as exc:
+        assert "unknown column(s): price" in exc.args[0]
+    else:
+        raise AssertionError("expected KeyError")
+
+
+def test_cli_per_key_direction(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO("c,n\nNL,1\nBE,5\nNL,3\nBE,2\n"))
+    assert main(["-", "-k", "c,n:desc"]) == 0
+    assert capsys.readouterr().out == "c,n\nBE,5\nBE,2\nNL,3\nNL,1\n"

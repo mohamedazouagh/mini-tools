@@ -112,3 +112,29 @@ def test_main_columns_flag(tmp_path, capsys):
     assert out[2] == "    10  NL"
     assert main([str(f), "-c", "price"]) == 2
     assert "unknown column(s): price (available: id, country, amount)" in capsys.readouterr().err
+
+
+def test_cli_encoding_previews_cp1252_file(tmp_path, capsys):
+    src = tmp_path / "legacy.csv"
+    src.write_bytes("naam;stad\nZoë;Café Noord\n".encode("cp1252"))
+    assert main([str(src), "-d", ";", "--encoding", "cp1252"]) == 0
+    out = capsys.readouterr().out
+    assert out.splitlines()[0].startswith("naam  stad")
+    assert "Zoë   Café Noord" in out
+
+
+def test_cli_undecodable_input_is_a_clear_error(tmp_path, capsys):
+    src = tmp_path / "legacy.csv"
+    src.write_bytes("id,name\n1,Zoë\n".encode("cp1252"))
+    assert main([str(src)]) == 1
+    err = capsys.readouterr().err
+    assert "is not valid utf-8" in err and "byte 0xeb at offset 12" in err and "--encoding cp1252" in err
+
+
+def test_cli_unknown_encoding_rejected(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    src.write_text("a\n1\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        main([str(src), "--encoding", "nope-42"])
+    assert exc.value.code == 2
+    assert "unknown encoding: nope-42" in capsys.readouterr().err

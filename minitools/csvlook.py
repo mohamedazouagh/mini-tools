@@ -7,8 +7,11 @@ GitHub-style table (pipes in cells escaped) ready to paste into a README or
 issue. Wide characters (CJK, most emoji) count as two columns. Reads a file
 or stdin ("-"); a "showing N of M rows" note goes to stderr. `-c a,b`
 shows only those columns, in that order (unknown names list the real ones).
+Files are read as UTF-8 (a BOM is fine); `--encoding cp1252` previews legacy
+Excel exports, and undecodable input is a short error instead of a traceback.
 
     python -m minitools.csvlook sales.csv -n 10
+    python -m minitools.csvlook legacy.csv --encoding cp1252 -d ';'
     python -m minitools.csvlook sales.csv -c country,amount
     python -m minitools.csvlook sales.csv --markdown --max-width 30 -d ';'
 """
@@ -113,7 +116,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--markdown", action="store_true", help="print a Markdown table")
     p.add_argument("-c", "--columns", help="comma-separated column names to show, in this order")
     p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default ',')")
+    p.add_argument("--encoding", default="utf-8-sig", help="encoding of the input file, e.g. cp1252 (default UTF-8)")
     args = p.parse_args(argv)
+    try:
+        "".encode(args.encoding)
+    except LookupError:
+        p.error(f"unknown encoding: {args.encoding}")
 
     if args.rows < 0:
         print("csvlook: --rows must be 0 or more", file=sys.stderr)
@@ -128,7 +136,15 @@ def main(argv: list[str] | None = None) -> int:
         if not path.is_file():
             print(f"csvlook: no such file: {path}", file=sys.stderr)
             return 1
-        raw = path.read_text(encoding="utf-8-sig")
+        try:
+            raw = path.read_text(encoding=args.encoding)
+        except UnicodeDecodeError as exc:
+            print(
+                f"csvlook: {path} is not valid {exc.encoding} (byte 0x{exc.object[exc.start]:02x} at offset "
+                f"{exc.start}); try --encoding cp1252 or --encoding latin-1",
+                file=sys.stderr,
+            )
+            return 1
 
     rows = [r for r in csv.reader(io.StringIO(raw), delimiter=args.delimiter) if r]
     if not rows:

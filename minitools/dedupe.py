@@ -5,12 +5,14 @@ and/or surrounding whitespace, skip blank lines, and print a summary of how
 many duplicates were dropped. `--keep-last` keeps the last occurrence of
 each line instead of the first. `--only-dupes` flips the tool into an audit
 mode: print only the lines that occur more than once (like `uniq -d`, but
-without sorting), with `--stats` reporting how often each repeats. Reads a file or stdin ("-"), writes stdout
+without sorting), with `--stats` reporting how often each repeats. `--count`
+prefixes every kept line with how many times its key occurred (like `uniq -c`, but
+without sorting first); add `--count-sort` to list the most repeated lines first. Reads a file or stdin ("-"), writes stdout
 or --output. Files are read as UTF-8 by default; `--encoding cp1252` (or latin-1, ...)
 reads legacy exports and writes -o in the same encoding, and undecodable input gives a
 clear error instead of a traceback.
 
-    python -m minitools.dedupe input.txt [-o out.txt] [--ignore-case] [--strip] [--skip-blank] [--keep-last] [--only-dupes] [--stats] [--encoding cp1252]
+    python -m minitools.dedupe input.txt [-o out.txt] [--ignore-case] [--strip] [--skip-blank] [--keep-last] [--only-dupes] [--count [--count-sort]] [--stats] [--encoding cp1252]
 """
 from __future__ import annotations
 
@@ -51,6 +53,29 @@ def duplicate_lines(
         counts[key] += 1
         first.setdefault(key, line)
     return [(first[k], n) for k, n in counts.items() if n > 1]
+
+
+def line_counts(
+    lines: Iterable[str],
+    ignore_case: bool = False,
+    strip: bool = False,
+    skip_blank: bool = False,
+) -> Counter[str]:
+    """How often each comparison key occurs (blank lines left out with ``skip_blank``)."""
+    key_of = _key_func(ignore_case, strip, skip_blank)
+    return Counter(k for k in map(key_of, lines) if k is not None)
+
+
+def with_counts(
+    kept: list[str], counts: Counter[str], ignore_case: bool, strip: bool, sort: bool = False
+) -> list[str]:
+    """Prefix kept lines with their count, right-aligned; ``sort`` puts the most frequent first (stable)."""
+    key_of = _key_func(ignore_case, strip, False)
+    pairs = [(counts[key_of(line)], line) for line in kept]
+    if sort:
+        pairs.sort(key=lambda p: -p[0])
+    width = max((len(str(n)) for n, _ in pairs), default=1)
+    return [f"{n:>{width}} {line}" for n, line in pairs]
 
 
 def dedupe_lines(
@@ -101,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--only-dupes", action="store_true", help="print only lines that occur more than once (first occurrence each)"
     )
+    p.add_argument("--count", action="store_true", help="prefix each kept line with how often it occurred")
+    p.add_argument("--count-sort", action="store_true", help="with --count: most repeated lines first")
     p.add_argument("--stats", action="store_true", help="print kept/dropped counts to stderr")
     p.add_argument(
         "--encoding", default="utf-8-sig", help="encoding of the input file, also used for -o (default UTF-8)"
@@ -129,6 +156,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
     lines = raw.splitlines()
+    if args.count_sort and not args.count:
+        print("dedupe: --count-sort needs --count", file=sys.stderr)
+        return 2
+    if args.count and args.only_dupes:
+        print("dedupe: --count cannot be combined with --only-dupes (use --only-dupes --stats)", file=sys.stderr)
+        return 2
     if args.only_dupes:
         if args.keep_last:
             print("dedupe: --only-dupes cannot be combined with --keep-last", file=sys.stderr)
@@ -145,7 +178,11 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {n}x {line}", file=sys.stderr)
         return 0
     kept = list(dedupe_lines(lines, args.ignore_case, args.strip, args.skip_blank, args.keep_last))
-    text = "".join(f"{line}\n" for line in kept)
+    shown = kept
+    if args.count:
+        counts = line_counts(lines, args.ignore_case, args.strip, args.skip_blank)
+        shown = with_counts(kept, counts, args.ignore_case, args.strip, args.count_sort)
+    text = "".join(f"{line}\n" for line in shown)
 
     if args.output:
         args.output.write_text(text, encoding=out_encoding)

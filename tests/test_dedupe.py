@@ -2,7 +2,7 @@ import io
 
 import pytest
 
-from minitools.dedupe import dedupe_lines, duplicate_lines, main
+from minitools.dedupe import dedupe_lines, duplicate_lines, line_counts, main, with_counts
 
 
 def test_keeps_first_occurrence_in_order():
@@ -116,3 +116,40 @@ def test_cli_unknown_encoding_is_usage_error(tmp_path):
     with pytest.raises(SystemExit) as exc:
         dedupe_main([str(src), "--encoding", "no-such-codec"])
     assert exc.value.code == 2
+
+
+def test_line_counts_and_with_counts_follow_comparison_options():
+    lines = ["Breda", " breda ", "Tilburg", "", ""]
+    counts = line_counts(lines, ignore_case=True, strip=True, skip_blank=True)
+    assert counts == {"breda": 2, "tilburg": 1}
+    kept = list(dedupe_lines(lines, ignore_case=True, strip=True, skip_blank=True))
+    assert with_counts(kept, counts, ignore_case=True, strip=True) == ["2 Breda", "1 Tilburg"]
+
+
+def test_with_counts_aligns_and_sorts_stably():
+    lines = ["a"] * 2 + ["b"] * 12 + ["c"] * 2
+    kept = list(dedupe_lines(lines))
+    counts = line_counts(lines)
+    assert with_counts(kept, counts, False, False) == [" 2 a", "12 b", " 2 c"]
+    assert with_counts(kept, counts, False, False, sort=True) == ["12 b", " 2 a", " 2 c"]
+    assert with_counts([], counts, False, False) == []
+
+
+def test_cli_count_with_keep_last_and_sort(tmp_path, capsys):
+    src = tmp_path / "in.txt"
+    src.write_text("x\ny\nx\nz\ny\nx\n", encoding="utf-8")
+    assert main([str(src), "--count"]) == 0
+    assert capsys.readouterr().out == "3 x\n2 y\n1 z\n"
+    assert main([str(src), "--count", "--keep-last"]) == 0
+    assert capsys.readouterr().out == "1 z\n2 y\n3 x\n"
+    assert main([str(src), "--count", "--count-sort"]) == 0
+    assert capsys.readouterr().out == "3 x\n2 y\n1 z\n"
+
+
+def test_cli_count_option_conflicts(tmp_path, capsys):
+    src = tmp_path / "in.txt"
+    src.write_text("a\na\n", encoding="utf-8")
+    assert main([str(src), "--count-sort"]) == 2
+    assert "--count-sort needs --count" in capsys.readouterr().err
+    assert main([str(src), "--count", "--only-dupes"]) == 2
+    assert "cannot be combined with --only-dupes" in capsys.readouterr().err

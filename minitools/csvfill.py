@@ -25,6 +25,13 @@ Blank cells after the last value stay blank; `--within` works the same way.
 
 Reads a file or stdin ("-"), writes stdout or -o. Unknown column names list the
 real headers (exit 2).
+
+Spreadsheet reports saved as CSV on Windows are often cp1252, not UTF-8:
+`--encoding cp1252` reads them and the output is written as UTF-8. Undecodable
+input gives a short error with the bad byte and its offset instead of a
+traceback.
+
+    python -m minitools.csvfill report.csv -c region --encoding cp1252 -o tidy.csv
 """
 from __future__ import annotations
 
@@ -96,7 +103,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default ',')")
     p.add_argument("-o", "--output", type=Path, help="write here instead of stdout")
     p.add_argument("--stats", action="store_true", help="print how many cells were filled to stderr")
+    p.add_argument(
+        "--encoding", default="utf-8-sig", help="encoding of the input file, e.g. cp1252 (default UTF-8); output is UTF-8"
+    )
     args = p.parse_args(argv)
+    try:
+        "".encode(args.encoding)
+    except LookupError:
+        p.error(f"unknown encoding: {args.encoding}")
 
     if args.input == "-":
         raw = sys.stdin.read()
@@ -105,7 +119,15 @@ def main(argv: list[str] | None = None) -> int:
         if not path.is_file():
             print(f"csvfill: no such file: {path}", file=sys.stderr)
             return 1
-        raw = path.read_text(encoding="utf-8-sig")
+        try:
+            raw = path.read_text(encoding=args.encoding)
+        except UnicodeDecodeError as exc:
+            print(
+                f"csvfill: {path} is not valid {exc.encoding} (byte 0x{exc.object[exc.start]:02x} at offset "
+                f"{exc.start}); try --encoding cp1252 or --encoding latin-1",
+                file=sys.stderr,
+            )
+            return 1
 
     rows = [r for r in csv.reader(io.StringIO(raw), delimiter=args.delimiter) if r]
     if not rows:

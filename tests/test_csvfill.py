@@ -121,3 +121,26 @@ def test_cli_up_with_within_and_rejects_value(tmp_path, capsys):
     assert capsys.readouterr().out == "region,store\nNorth,Breda\nNorth,Breda\nSouth,\n"
     assert main([str(src), "-c", "store", "--up", "--value", "x"]) == 2
     assert "--up only applies to filling" in capsys.readouterr().err
+
+
+def test_cli_encoding_reads_cp1252_report_and_writes_utf8(tmp_path):
+    src, dst = tmp_path / "in.csv", tmp_path / "out.csv"
+    src.write_bytes("regio;winkel;omzet\nNoord;Café Zoë;10\n;Bäckerei;12\n".encode("cp1252"))
+    assert main([str(src), "-c", "regio", "-d", ";", "--encoding", "cp1252", "-o", str(dst)]) == 0
+    assert dst.read_text(encoding="utf-8") == "regio;winkel;omzet\nNoord;Café Zoë;10\nNoord;Bäckerei;12\n"
+
+
+def test_cli_undecodable_input_gives_short_error(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    src.write_bytes("regio;winkel\nNoord;Zo\xeb\n".encode("latin-1"))
+    assert main([str(src), "-c", "regio", "-d", ";"]) == 1
+    err = capsys.readouterr().err
+    assert "is not valid utf-8" in err and "byte 0xeb at offset 21" in err and "--encoding cp1252" in err
+
+
+def test_cli_unknown_encoding_rejected(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    src.write_text("a\n1\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main([str(src), "-c", "a", "--encoding", "nope-42"])
+    assert "unknown encoding: nope-42" in capsys.readouterr().err

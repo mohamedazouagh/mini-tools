@@ -1,4 +1,6 @@
-from minitools.renamer import find_conflicts, main, plan_renames
+import pytest
+
+from minitools.renamer import find_conflicts, main, name_problem, plan_renames
 
 
 def _make(folder, *names):
@@ -72,3 +74,35 @@ def test_cli_bad_regex_and_missing_folder(tmp_path, capsys):
     assert "bad pattern" in capsys.readouterr().err
     assert main([str(tmp_path / "nope"), "a", "b"]) == 1
     assert "no such folder" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "name, reason",
+    [
+        ("report:v2.txt", "characters Windows does not allow (':')"),
+        ('a<b>?.txt', "('<', '>', '?')"),
+        ("tab\there.txt", "('\\t')"),
+        ("notes.", "ends with a space or dot"),
+        ("notes ", "ends with a space or dot"),
+        ("NUL", "reserved device name"),
+        ("nul.txt", "reserved device name"),
+        ("Com3.log", "reserved device name"),
+        ("", "not a valid file name"),
+        ("sub\\x.txt", "not a valid file name"),
+    ],
+)
+def test_name_problem_rejects_windows_unsafe_names(name, reason):
+    assert reason in name_problem(name)
+
+
+@pytest.mark.parametrize("name", ["report_v2.txt", "console.txt", "COM10.log", "nulls.csv", ".hidden", "a.b.c"])
+def test_name_problem_accepts_normal_names(name):
+    assert name_problem(name) is None
+
+
+def test_cli_windows_unsafe_target_renames_nothing(tmp_path, capsys):
+    _make(tmp_path, "2026-11-05 0930.txt", "other.txt")
+    assert main([str(tmp_path), r"(\d\d)(\d\d)", r"\1:\2", "--apply"]) == 1
+    err = capsys.readouterr().err
+    assert "Windows does not allow (':')" in err and "nothing renamed" in err
+    assert _names(tmp_path) == ["2026-11-05 0930.txt", "other.txt"]

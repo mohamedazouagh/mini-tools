@@ -7,7 +7,11 @@ the planned renames are printed so you can check them first.
 
 The whole plan is validated before anything moves: if two files would get the
 same name, a new name already belongs to another file, or a new name is empty
-or contains a path separator, nothing is renamed and the exit code is 1.
+or contains a path separator, nothing is renamed and the exit code is 1. Names
+Windows can't store are rejected the same way on every system, so a plan made
+on Linux/macOS works on a Windows share too: the characters < > : " | ? * and
+control characters, a trailing space or dot, and reserved device names (CON,
+PRN, AUX, NUL, COM1-9, LPT1-9, also with an extension like "nul.txt").
 
     python -m minitools.renamer photos "^IMG_(\\d+)" "holiday_\\1"          # preview
     python -m minitools.renamer photos "^IMG_(\\d+)" "holiday_\\1" --apply  # do it
@@ -31,14 +35,34 @@ def plan_renames(names: list[str], pattern: str, replacement: str, ignore_case: 
     return plan
 
 
+_WINDOWS_BAD_CHARS = set('<>:"|?*') | {chr(c) for c in range(32)}
+_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {f"{p}{n}" for p in ("COM", "LPT") for n in range(1, 10)}
+
+
+def name_problem(name: str) -> str | None:
+    """Why ``name`` is not a portable file name, or None if it is fine."""
+    if not name or name in (".", "..") or "/" in name or "\\" in name:
+        return "not a valid file name"
+    bad = sorted({c for c in name if c in _WINDOWS_BAD_CHARS})
+    if bad:
+        shown = ", ".join(repr(c) for c in bad)
+        return f"contains characters Windows does not allow ({shown})"
+    if name[-1] in " .":
+        return "ends with a space or dot (Windows drops it)"
+    if name.split(".")[0].rstrip(" ").upper() in _RESERVED:
+        return "is a reserved device name on Windows"
+    return None
+
+
 def find_conflicts(plan: list[tuple[str, str]], existing: list[str]) -> list[str]:
     """Human-readable problems that make the plan unsafe; empty list means OK."""
     problems = []
     targets: dict[str, str] = {}
     sources = {old for old, _ in plan}
     for old, new in plan:
-        if not new or new in (".", "..") or "/" in new or "\\" in new:
-            problems.append(f"{old!r} -> {new!r}: not a valid file name")
+        why = name_problem(new)
+        if why:
+            problems.append(f"{old!r} -> {new!r}: {why}")
             continue
         key = new.casefold()  # Windows and macOS folders are case-insensitive
         if key in targets:

@@ -1,8 +1,9 @@
+import csv
 import json
 
 import pytest
 
-from minitools.json2csv import flatten, main, to_table
+from minitools.json2csv import flatten, join_list, main, to_table
 
 
 def test_flatten_nested_and_lists():
@@ -101,3 +102,29 @@ def test_cli_writes_lowercase_booleans(tmp_path):
     src.write_text(json.dumps([{"id": 1, "ok": True}, {"id": 2, "ok": False}]), encoding="utf-8")
     assert main([str(src), str(dst)]) == 0
     assert dst.read_text(encoding="utf-8").splitlines() == ["id,ok", "1,true", "2,false"]
+
+
+def test_join_list_plain_values_with_separator():
+    assert join_list(["a", "b"], ";") == "a;b"
+    assert join_list([1, 2.5, True, None], "|") == "1|2.5|true|"
+    assert join_list([], ";") == ""
+    assert join_list(["a", "b"], None) == '["a", "b"]'  # default stays JSON text
+
+
+def test_join_list_falls_back_to_json_when_ambiguous():
+    assert join_list(["a;b", "c"], ";") == '["a;b", "c"]'
+    assert join_list([{"id": 1}], ";") == '[{"id": 1}]'
+    assert join_list([[1, 2], 3], ";") == "[[1, 2], 3]"
+
+
+def test_cli_list_sep_nested_and_rejects_bad_separator(tmp_path):
+    src, dst = tmp_path / "posts.json", tmp_path / "out.csv"
+    src.write_text('[{"id": 1, "tags": ["x", "y"], "meta": {"ids": [3, 4]}}, {"id": 2, "tags": []}]',
+                   encoding="utf-8")
+    assert main([str(src), str(dst), "--list-sep", ";"]) == 0
+    with dst.open(encoding="utf-8", newline="") as f:
+        rows = list(csv.reader(f))
+    assert rows == [["id", "tags", "meta.ids"], ["1", "x;y", "3;4"], ["2", "", ""]]
+    for bad in ("", "a\nb"):
+        with pytest.raises(SystemExit):
+            main([str(src), str(dst), "--list-sep", bad])

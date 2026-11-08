@@ -121,3 +121,27 @@ def test_cli_errors(tmp_path, capsys):
     assert main([str(tmp_path / "missing.csv"), "-c", "amount"]) == 1
     (tmp_path / "empty.csv").write_text("", encoding="utf-8")
     assert main([str(tmp_path / "empty.csv"), "-c", "amount"]) == 1
+
+
+def test_cli_encoding_reads_cp1252_euro_and_writes_utf8(tmp_path):
+    src, dst = tmp_path / "bank.csv", tmp_path / "out.csv"
+    src.write_bytes("omschrijving;bedrag\nCafé;€ 1.234,50\nHuur;-€ 850,00\n".encode("cp1252"))
+    assert main([str(src), "-c", "bedrag", "-d", ";", "--encoding", "cp1252", "-o", str(dst)]) == 0
+    assert dst.read_text(encoding="utf-8") == "omschrijving;bedrag\nCafé;1234.50\nHuur;-850.00\n"
+
+
+def test_cli_undecodable_input_is_a_clear_error(tmp_path, capsys):
+    src = tmp_path / "bank.csv"
+    src.write_bytes("a\n€ 5\n".encode("cp1252"))
+    assert main([str(src), "-c", "a"]) == 1
+    err = capsys.readouterr().err
+    assert "is not valid utf-8" in err and "byte 0x80 at offset 2" in err and "--encoding cp1252" in err
+
+
+def test_cli_unknown_encoding_rejected(tmp_path, capsys):
+    src = tmp_path / "in.csv"
+    src.write_text("a\n1\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        main([str(src), "-c", "a", "--encoding", "nope-42"])
+    assert exc.value.code == 2
+    assert "unknown encoding: nope-42" in capsys.readouterr().err

@@ -7,6 +7,7 @@ and database reads, keeping the decimals that were written.
 
     python -m minitools.csvnum bank.csv -c amount,balance --decimal comma -d ";" -o clean.csv
     python -m minitools.csvnum sales.csv -c price --strict
+    python -m minitools.csvnum bank.csv -c amount --encoding cp1252 -d ";" -o utf8.csv
 
 `--decimal dot|comma` says which mark is the decimal point; the default
 `auto` decides per cell: with both marks the last one is the decimal point,
@@ -19,6 +20,11 @@ codes EUR/USD/GBP/CHF are dropped; "(12)" and a trailing minus mean negative.
 Cells that cannot be read are left unchanged and listed on stderr with their
 line number; `--strict` makes that an error (exit 1, nothing written). Empty
 cells stay empty. Reads a file or stdin ("-"), writes stdout or -o.
+
+Input is read as UTF-8 (a BOM is fine) unless --encoding says otherwise: many
+bank and Excel exports are cp1252, where "€" is byte 0x80. Undecodable input
+gives a short error with the byte offset instead of a traceback; output is
+always UTF-8.
 """
 from __future__ import annotations
 
@@ -157,7 +163,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--strict", action="store_true", help="fail (exit 1) if any cell cannot be read")
     p.add_argument("-d", "--delimiter", default=",", help="field delimiter (default ',')")
     p.add_argument("-o", "--output", type=Path, help="write here instead of stdout")
+    p.add_argument("--encoding", default="utf-8-sig",
+                   help="encoding of the input file, e.g. cp1252 (default UTF-8); output is UTF-8")
     args = p.parse_args(argv)
+    try:
+        "".encode(args.encoding)
+    except LookupError:
+        p.error(f"unknown encoding: {args.encoding}")
 
     if args.input == "-":
         raw = sys.stdin.read()
@@ -166,7 +178,15 @@ def main(argv: list[str] | None = None) -> int:
         if not path.is_file():
             print(f"csvnum: no such file: {path}", file=sys.stderr)
             return 1
-        raw = path.read_text(encoding="utf-8-sig")
+        try:
+            raw = path.read_text(encoding=args.encoding)
+        except UnicodeDecodeError as exc:
+            print(
+                f"csvnum: {path} is not valid {exc.encoding} (byte 0x{exc.object[exc.start]:02x} at offset "
+                f"{exc.start}); try --encoding cp1252 or --encoding latin-1",
+                file=sys.stderr,
+            )
+            return 1
 
     reader = csv.reader(io.StringIO(raw), delimiter=args.delimiter)
     rows = []

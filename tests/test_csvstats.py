@@ -26,6 +26,16 @@ def test_decimal_comma():
     assert (price["min"], price["max"], price["mean"]) == (0.5, 1234.5, 617.5)
 
 
+def test_decimal_comma_rejects_dot_decimals_instead_of_misreading_them():
+    # "1.5" used to become 15 once the dot was stripped as a thousands separator.
+    (mixed,) = profile([{"x": "1.5"}, {"x": "2,5"}], ["x"], decimal_comma=True)
+    assert mixed["mean"] is None
+    (ok,) = profile([{"x": "1.500"}, {"x": "-1.234.567,89"}, {"x": "7"}], ["x"], decimal_comma=True)
+    assert (ok["min"], ok["max"]) == (-1234567.89, 1500.0)
+    for bad in ["1.23,5", "12.34", "1.2345", ".5", "1e3", "1,5,0"]:
+        assert profile([{"x": bad}], ["x"], decimal_comma=True)[0]["mean"] is None, bad
+
+
 def test_short_rows_count_as_empty():
     rows = [{"a": "1", "b": None}]  # csv.DictReader fills missing fields with None
     assert profile(rows, ["a", "b"])[1]["empty"] == 1

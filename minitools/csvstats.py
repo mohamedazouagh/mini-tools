@@ -12,10 +12,14 @@ from __future__ import annotations
 import argparse
 import csv
 import math
+import re
 import sys
 from collections.abc import Iterable
 from pathlib import Path
 from statistics import mean
+
+# "1234", "1.234", "-1.234.567,89", "0,5": dots only between 3-digit groups.
+_COMMA_NUMBER = re.compile(r"[+-]?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d+)?")
 
 
 def _number(cell: str, decimal_comma: bool) -> float | None:
@@ -23,11 +27,17 @@ def _number(cell: str, decimal_comma: bool) -> float | None:
 
     float() also accepts "nan", "inf" and "1_000", which in a CSV are text
     (a name like "Nan", a typo) rather than numbers, so those are rejected.
+
+    With ``decimal_comma`` a dot is only accepted as a thousands separator
+    between groups of exactly three digits ("1.234,5"). A cell like "1.5" is
+    text there: stripping its dot would silently read it as 15.
     """
     text = cell.strip()
     if "_" in text:
         return None
     if decimal_comma:
+        if not _COMMA_NUMBER.fullmatch(text):
+            return None
         text = text.replace(".", "").replace(",", ".")
     try:
         value = float(text)
